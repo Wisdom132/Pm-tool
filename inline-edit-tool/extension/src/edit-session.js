@@ -88,6 +88,17 @@ export function createEditSession() {
       return { changed: true, edit: next };
     },
 
+    /**
+     * Attach a source location the editor confirmed for an unannotated edit.
+     * Not a history step: it records where the text lives, not what it says.
+     */
+    attachSource(key, { sourceFile, sourceLine }) {
+      const existing = find(key);
+      if (!existing) return false;
+      put(key, { ...existing, sourceFile, sourceLine, sourceFileConfirmed: true });
+      return true;
+    },
+
     /** Drop an edit and record it in history. */
     remove(key) {
       const existing = find(key);
@@ -169,10 +180,20 @@ export function createEditSession() {
     /** The wire format for /api/create-pr. */
     toPayloadEdits: () =>
       edits.map(
-        ({ framework, sourceFile, sourceLine, i18nKey, originalText, newText, pageUrl }) => ({
+        ({
           framework,
           sourceFile,
           sourceLine,
+          sourceFileConfirmed,
+          i18nKey,
+          originalText,
+          newText,
+          pageUrl,
+        }) => ({
+          framework,
+          sourceFile,
+          sourceLine,
+          sourceFileConfirmed,
           i18nKey,
           originalText,
           newText,

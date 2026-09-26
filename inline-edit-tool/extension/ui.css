@@ -580,14 +580,94 @@
   white-space: nowrap;
 }
 
-#__iet-edits-table td:nth-last-child(2) {
-  color: #b91c1c;
+/* Unchanged words stay muted so the marked ones carry the meaning. */
+#__iet-edits-table td:nth-last-child(2),
+#__iet-edits-table td:last-child {
+  color: #71717a;
+}
+
+.__iet-diff-removed,
+.__iet-diff-added {
+  border-radius: 3px;
+  padding: 1px 2px;
+  font-weight: 600;
+}
+
+.__iet-diff-removed {
+  background: #fee2e2;
+  color: #991b1b;
   text-decoration: line-through;
 }
 
-#__iet-edits-table td:last-child {
-  color: #15803d;
-  font-weight: 500;
+.__iet-diff-added {
+  background: #dcfce7;
+  color: #14532d;
+}
+
+/* Locate: finding a source file for unannotated text */
+.__iet-locate-btn {
+  padding: 3px 8px;
+  border: 1px dashed #c4b5fd;
+  border-radius: 6px;
+  background: #f5f3ff;
+  color: #6d28d9;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.__iet-locate-btn:hover:not(:disabled) {
+  background: #ede9fe;
+}
+
+.__iet-locate-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.__iet-locate-note {
+  display: block;
+  max-width: 220px;
+  color: #b45309;
+  font-family: inherit;
+  font-size: 10.5px;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.__iet-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 260px;
+}
+
+.__iet-candidate {
+  padding: 4px 6px;
+  border: 1px solid #e4e4e7;
+  border-radius: 5px;
+  background: #fff;
+  font: inherit;
+  font-size: 10.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.__iet-candidate:hover {
+  border-color: var(--iet-accent);
+  background: #fdf2f8;
+}
+
+.__iet-candidate-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #3f3f46;
+  word-break: break-all;
+}
+
+/* A path the editor confirmed, rather than one the build supplied. */
+#__iet-edits-table td.__iet-located {
+  color: #6d28d9;
 }
 
 #__iet-note-label {
@@ -625,6 +705,7 @@
 }
 
 #__iet-panel-cancel,
+#__iet-panel-issue,
 #__iet-panel-confirm {
   padding: 9px 16px;
   border-radius: 8px;
@@ -642,6 +723,28 @@
 
 #__iet-panel-cancel:hover {
   background: #f4f4f5;
+}
+
+/* Secondary route: always available, and the only one in observer mode. */
+#__iet-panel-issue {
+  border: 1px solid #c4b5fd;
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+#__iet-panel-issue:hover:not(:disabled) {
+  background: #ede9fe;
+}
+
+#__iet-panel-issue:disabled {
+  background: #f4f4f5;
+  border-color: #e4e4e7;
+  color: #a1a1aa;
+  cursor: not-allowed;
+}
+
+#__iet-panel-btns {
+  align-items: center;
 }
 
 #__iet-panel-confirm {

@@ -9,7 +9,6 @@
     "start": "next start -p 3001"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "@babel/parser": "^7.29.9",
     "@octokit/rest": "^21.0.0",
     "@vue/compiler-sfc": "^3.5.43",

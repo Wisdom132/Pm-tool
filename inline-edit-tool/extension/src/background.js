@@ -68,6 +68,33 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  // ── Proxy POST requests to pr-service ──────────────────────
+  if (message.type === 'API_POST') {
+    (async () => {
+      try {
+        const stored = await chrome.storage.sync.get(['prServiceUrl']);
+        const token      = message.payload.token || (await getSessionId()) || '';
+        const serviceUrl = resolveServiceUrl(message.payload.serviceUrl || stored.prServiceUrl);
+
+        const res = await fetch(`${serviceUrl}${message.payload.path}`, {
+          method:  'POST',
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(message.payload.body || {}),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) sendResponse({ error: data.error || `HTTP ${res.status}` });
+        else         sendResponse({ data });
+      } catch (err) {
+        sendResponse({ error: err.message });
+      }
+    })();
+    return true;
+  }
+
   // ── Create PR ──────────────────────────────────────────────
   if (message.type === 'CREATE_PR') {
     (async () => {

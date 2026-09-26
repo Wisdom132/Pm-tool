@@ -3,6 +3,7 @@
 import { DEFAULT_SERVICE_URL, resolveServiceUrl } from "./config.js";
 import { getSessionId, getSessionLogin, clearSession } from "./auth-storage.js";
 import { describeSource } from "./page-context.js";
+import { diffWords, renderDiff } from "./ui/diff.js";
 
 const P = "__iet";
 const ID_REPO = `${P}-conn-repo`;
@@ -50,6 +51,11 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
   const edits = session.list();
   const currentUrl = window.location.href;
   const multiPage = session.pageCount() > 1;
+
+  // Observer mode: nothing on these pages was annotated at build time, so
+  // there is no source file to patch. The edits still have value — they go
+  // to an issue instead of being guessed into a commit.
+  const observerMode = edits.every((e) => !e.sourceFile && !e.i18nKey);
 
   // ── Shell ────────────────────────────────────────────────
   const panelEl = document.createElement("div");
@@ -109,10 +115,123 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
     fileCell.textContent = fname ? `${fname}${lineN}` : "—";
     if (!fname) fileCell.style.color = "#d1d5db";
 
-    row.insertCell().textContent = edit.originalText;
-    row.insertCell().textContent = edit.newText;
+    // Mark the words that actually changed, rather than leaving the reader
+    // to compare two full sentences.
+    const parts = diffWords(edit.originalText, edit.newText);
+    renderDiff(row.insertCell(), parts, "removed");
+    renderDiff(row.insertCell(), parts, "added");
   }
   card.appendChild(table);
+
+  /**
+   * The file column: a resolved path, or a way to find one.
+   *
+   * Unannotated text used to be guessed at on the server and committed
+   * wherever the guess landed. Now the editor is shown candidates and picks.
+   */
+  function renderFileCell(cell, edit) {
+    cell.textContent = "";
+
+    if (edit.sourceFile) {
+      const name = edit.sourceFile.split("/").pop();
+      cell.textContent = `${name}${edit.sourceLine ? `:${edit.sourceLine}` : ""}`;
+      cell.title = edit.sourceFile;
+      cell.classList.toggle(`${P}-located`, Boolean(edit.sourceFileConfirmed));
+      return;
+    }
+
+    const locateBtn = document.createElement("button");
+    locateBtn.className = `${P}-locate-btn`;
+    locateBtn.type = "button";
+    locateBtn.textContent = "Locate\u2026";
+    locateBtn.addEventListener("click", () => locate(edit, cell, locateBtn));
+    cell.appendChild(locateBtn);
+  }
+
+  /** Ask the service where this text lives, then let the editor choose. */
+  async function locate(edit, cell, trigger) {
+    trigger.disabled = true;
+    trigger.textContent = "Searching\u2026";
+
+    const s = await chrome.storage.sync.get(["prServiceUrl"]);
+    const response = await chrome.runtime.sendMessage({
+      type: "API_POST",
+      payload: {
+        path: "/api/locate",
+        token: (await getSessionId()) || "",
+        serviceUrl: resolveServiceUrl(s.prServiceUrl),
+        body: { repo: targetRepo, branch: targetBranch, text: edit.originalText },
+      },
+    });
+
+    if (response?.error || !response?.data) {
+      showLocateMessage(cell, response?.error || "Search failed");
+      return;
+    }
+
+    const { candidates, reason } = response.data;
+    if (!candidates || candidates.length === 0) {
+      showLocateMessage(cell, reason || "No match found");
+      return;
+    }
+
+    renderCandidates(cell, edit, candidates);
+  }
+
+  function showLocateMessage(cell, message) {
+    cell.textContent = "";
+    const note = document.createElement("span");
+    note.className = `${P}-locate-note`;
+    note.textContent = message;
+    cell.appendChild(note);
+  }
+
+  function renderCandidates(cell, edit, candidates) {
+    cell.textContent = "";
+
+    const list = document.createElement("div");
+    list.className = `${P}-candidates`;
+
+    for (const candidate of candidates) {
+      const option = document.createElement("button");
+      option.className = `${P}-candidate`;
+      option.type = "button";
+      option.title = candidate.snippet;
+
+      const path = document.createElement("span");
+      path.className = `${P}-candidate-path`;
+      path.textContent = `${candidate.sourceFile}:${candidate.sourceLine}`;
+      option.appendChild(path);
+
+      option.addEventListener("click", () => {
+        // Confirmed by a human — mark it so the PR body can say so.
+        edit.sourceFile = candidate.sourceFile;
+        edit.sourceLine = candidate.sourceLine;
+        edit.sourceFileConfirmed = true;
+        session.attachSource(edit.key, candidate);
+        renderFileCell(cell, edit);
+        refreshSubmitState();
+      });
+
+      list.appendChild(option);
+    }
+
+    cell.appendChild(list);
+  }
+
+  /**
+   * A pull request needs a target and at least one edit with a source file.
+   * An issue only needs a repository.
+   */
+  function refreshSubmitState() {
+    const anyResolved = session.list().some((e) => e.sourceFile || e.i18nKey);
+    confirmBtn.disabled = !targetRepo || !targetBranch || !anyResolved;
+    issueBtn.disabled = !targetRepo;
+
+    confirmBtn.title = anyResolved
+      ? ""
+      : "No edit has a source file yet \u2014 use Locate, or file an issue instead";
+  }
 
   // ── Note ─────────────────────────────────────────────────
   const noteLabel = document.createElement("label");
@@ -238,7 +357,7 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
     branch.wrap.style.display = "none";
     step1.style.display = "none";
     step2.style.display = "";
-    confirmBtn.disabled = false;
+    refreshSubmitState();
   }
 
   async function loadRepos(token, serviceUrl) {
@@ -315,7 +434,7 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
       if (match) {
         branch.sel.value = match;
         targetBranch = match;
-        confirmBtn.disabled = false;
+        refreshSubmitState();
         const hintEl = document.createElement("span");
         hintEl.className = `${P}-branch-hint`;
         hintEl.textContent = ctx.branch ? "auto-detected" : "remembered";
@@ -424,6 +543,51 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
     }
   }
 
+  async function submitIssue() {
+    if (!targetRepo) return;
+
+    const s = await chrome.storage.sync.get(["prServiceUrl"]);
+    issueBtn.disabled = true;
+    issueBtn.textContent = "Filing\u2026";
+    resultEl.textContent = "";
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "API_POST",
+        payload: {
+          path: "/api/create-issue",
+          token: (await getSessionId()) || "",
+          serviceUrl: resolveServiceUrl(s.prServiceUrl),
+          body: {
+            repo: targetRepo,
+            pageUrl: currentUrl,
+            note: noteInput.value.trim(),
+            edits: session.toPayloadEdits(),
+          },
+        },
+      });
+
+      if (response?.error) {
+        resultEl.innerHTML = `<span style="color:#dc2626">Error: ${escHtml(response.error)}</span>`;
+        issueBtn.disabled = false;
+        issueBtn.textContent = "File as issue";
+        return;
+      }
+
+      const { issueUrl } = response.data;
+      resultEl.innerHTML =
+        `<span style="color:#16a34a">\u2705 Issue filed: ` +
+        `<a href="${escHtml(issueUrl)}" target="_blank">${escHtml(issueUrl)}</a></span>`;
+
+      await onSubmitted?.();
+      setTimeout(close, 3500);
+    } catch (err) {
+      resultEl.innerHTML = `<span style="color:#dc2626">Error: ${escHtml(err.message)}</span>`;
+      issueBtn.disabled = false;
+      issueBtn.textContent = "File as issue";
+    }
+  }
+
   // ── Wiring ───────────────────────────────────────────────
   changeBtn.addEventListener("click", async () => {
     const s = await chrome.storage.sync.get(["prServiceUrl"]);
@@ -441,12 +605,13 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
 
   repo.sel.addEventListener("change", async () => {
     targetRepo = repo.sel.value;
+    refreshSubmitState();
     await loadBranches(targetRepo);
   });
 
   branch.sel.addEventListener("change", () => {
     targetBranch = branch.sel.value;
-    confirmBtn.disabled = !targetBranch;
+    refreshSubmitState();
     branch.wrap.querySelector(`.${P}-branch-hint`)?.remove();
     if (targetBranch) saveSiteSettings({ branch: targetBranch });
   });

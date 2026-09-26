@@ -6,17 +6,19 @@ import {
   getFileContent,
   commitFileChange,
   openPullRequest,
-  findTextInRepo,
 } from '../../lib/github.js';
 import { buildCommitMessage, buildPrBody } from '../../lib/patcher.js';
 import { applyEditsToFile } from '../../lib/codemod/index.js';
 import { resolveI18nEdits } from '../../lib/resolve-i18n.js';
 import { log } from '../../lib/logger.js';
+import { initObservability } from '../../lib/observability.js';
 import { getWriteToken } from '../../lib/github-app.js';
 import { enforce, LIMITS } from '../../lib/rate-limit.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
+
+  await initObservability();
 
   const auth = await verifyExtensionToken(req, res);
   if (!auth) return;
@@ -59,20 +61,13 @@ export default async function handler(req, res) {
   if (realEdits.length === 0)
     return res.status(400).json({ error: 'All edits are no-ops (original === new text)' });
 
-  // For edits without sourceFile, try to locate them via GitHub code search
-  const resolvedEdits = await Promise.all(
-    realEdits.map(async (edit) => {
-      if (edit.sourceFile) return edit;
-      const found = await findTextInRepo({
-        token: writeToken,
-        owner,
-        repo: repoName,
-        branch: baseBranch,
-        text: edit.originalText,
-        pageUrl,
-      });
-      return found ? { ...edit, ...found, _foundViaSearch: true } : edit;
-    })
+  // Edits arrive already resolved: either annotated at build time, or
+  // located via /api/locate and confirmed by the editor. Nothing is guessed
+  // here — an unresolved edit is reported, never written somewhere plausible.
+  const resolvedEdits = realEdits.map((edit) =>
+    edit.sourceFile && !edit.sourceFileConfirmed && edit._locatedBySearch
+      ? { ...edit, _foundViaSearch: true }
+      : edit
   );
 
   log.debug('create_pr.edits_resolved', {
@@ -95,7 +90,7 @@ export default async function handler(req, res) {
   if (withSource.length === 0)
     return res.status(400).json({
       error:
-        'Could not locate source files for any edits. The text may be too short, too common, or generated dynamically. Install the annotation plugin for reliable PR creation.',
+        'None of these edits has a source file. Annotated pages resolve automatically; otherwise use Locate in the review panel to confirm where each one lives.',
     });
 
   try {

@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildCommitMessage, buildPrBody } from '../overlay/pr-service/lib/patcher.js';
+import {
+  buildCommitMessage,
+  buildPrBody,
+  buildIssueBody,
+} from '../overlay/pr-service/lib/patcher.js';
 
 describe('buildCommitMessage', () => {
   it('includes the page hostname', () => {
@@ -96,5 +100,55 @@ describe('buildPrBody', () => {
 
   it('links back to the page', () => {
     expect(buildPrBody(base)).toContain('[preview.example.com](https://preview.example.com/)');
+  });
+});
+
+describe('buildIssueBody', () => {
+  const base = {
+    edits: [
+      { originalText: 'Build things that mater', newText: 'Build things that matter', tagName: 'H1', pageUrl: 'https://preview.test/' },
+    ],
+    editor: { login: 'octocat' },
+    pageUrl: 'https://preview.test/',
+  };
+
+  it('lists the proposed change', () => {
+    const body = buildIssueBody(base);
+    expect(body).toContain('Build things that mater');
+    expect(body).toContain('Build things that matter');
+  });
+
+  it('falls back to the tag when there is no source file', () => {
+    expect(buildIssueBody(base)).toContain('`<h1>`');
+  });
+
+  it('uses the source file when one was confirmed', () => {
+    const body = buildIssueBody({
+      ...base,
+      edits: [{ ...base.edits[0], sourceFile: 'src/Hero.tsx', sourceLine: 12 }],
+    });
+    expect(body).toContain('`src/Hero.tsx:12`');
+  });
+
+  it('groups by page', () => {
+    const body = buildIssueBody({
+      ...base,
+      edits: [
+        base.edits[0],
+        { originalText: 'Home', newText: 'Start', pageUrl: 'https://preview.test/pricing' },
+      ],
+    });
+    expect(body).toContain('/pricing');
+    expect(body.match(/\| Where \| Current \| Proposed \|/g)).toHaveLength(2);
+  });
+
+  it('explains why this is an issue and not a pull request', () => {
+    expect(buildIssueBody(base)).toContain('no build annotation');
+  });
+
+  it('attributes the reporter and carries the note', () => {
+    const body = buildIssueBody({ ...base, note: 'Spotted in review' });
+    expect(body).toContain('Reported by **@octocat**');
+    expect(body).toContain('Spotted in review');
   });
 });

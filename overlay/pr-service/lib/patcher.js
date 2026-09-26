@@ -6,6 +6,53 @@
  * threw on the first miss, losing the whole pull request.
  */
 
+/**
+ * Issue body for observer mode.
+ *
+ * Nothing here claims to know where the text lives — it records exactly what
+ * was seen and what was wanted, with enough context for someone who does.
+ */
+export function buildIssueBody({ edits, editor, pageUrl, note }) {
+  const byPage = new Map();
+  for (const edit of edits) {
+    const url = edit.pageUrl || pageUrl;
+    if (!byPage.has(url)) byPage.set(url, []);
+    byPage.get(url).push(edit);
+  }
+
+  const sections = [...byPage.entries()].map(([url, pageEdits]) => {
+    const rows = pageEdits.map((e) => {
+      const where = e.sourceFile
+        ? `\`${e.sourceFile}${e.sourceLine ? `:${e.sourceLine}` : ''}\``
+        : `\`<${(e.tagName || 'element').toLowerCase()}>\``;
+      return `| ${where} | ${e.originalText} | ${e.newText} |`;
+    });
+
+    return [
+      `### [${new URL(url).pathname || '/'}](${url})`,
+      '',
+      '| Where | Current | Proposed |',
+      '|-------|---------|----------|',
+      ...rows,
+    ].join('\n');
+  });
+
+  const noteSection = note ? `\n**Note:** ${note}\n` : '';
+  const editorLine = editor?.login ? `\nReported by **@${editor.login}**` : '';
+
+  return `## Copy changes requested from the browser
+${noteSection}
+${sections.join('\n\n')}
+
+> These were captured on a page with no build annotation, so the source
+> files could not be resolved automatically. Install the annotation plugin
+> to let the same edits open a pull request directly.
+${editorLine}
+
+---
+*Created with Inline Edit Tool*`;
+}
+
 export function buildCommitMessage(edits, pageUrl) {
   const host  = new URL(pageUrl).hostname;
   const files = [...new Set(edits.map((e) => e.sourceFile))].join(', ');

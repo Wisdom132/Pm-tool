@@ -137,22 +137,36 @@ time, deciding what a click on the page does.
       verified by capturing each state
 - [x] **5.9** 33 UI unit tests + 6 tool-model E2E tests
 
-### Deferred from the original Phase 5
+### Done
 
-Still worth doing, now on a UI that can host them:
+- [x] **5.10** Observer mode — an unannotated page files an issue instead of
+      guessing at source files
+- [x] **5.11** `findTextInRepo` retired. Replaced by `/api/locate`: one code-search
+      call, ranked candidates, confirmed by a human before anything is written.
+      The old path made one API call per source file per edit and committed to
+      whatever a model picked. The Anthropic dependency went with it.
+- [x] **5.15** Word-level source diff in the review panel
 
-- [ ] **5.10** Observer mode — no annotation present → comment and file an issue
-- [ ] **5.11** Retire `findTextInRepo` in favour of a confirmable code-search hint
+### Parked — each of these is a new tool in the rail
+
+Deliberately not started; the rail is ready to host them.
+
+- [x] **5.10** Observer mode — no annotation present → comment and file an issue
+- [x] **5.11** Retire `findTextInRepo` in favour of a confirmable code-search hint
 - [ ] **5.12** Attribute editing — `alt`, `href`, `aria-label`, `title`
 - [ ] **5.13** Tailwind class editing with autocomplete and live preview
 - [ ] **5.14** Image replacement
-- [ ] **5.15** Source-diff preview in the review panel
+- [x] **5.15** Source-diff preview in the review panel
 - [ ] **5.16** Structural ops — delete, duplicate, reorder
 - [ ] **5.17** Responsive breakpoint preview
 
-## Phase 6 — Ship
+## Phase 6 — Ship ✅
 
-- [ ] **6.1** README + per-framework install guides (currently only doc comments)
-- [ ] **6.2** Deployment guide for the pr-service with an env var reference
-- [ ] **6.3** Sentry + structured logging wired to a real sink
-- [ ] **6.4** Publish the annotation package to npm so plugin install is one command
+- [x] **6.1** README + per-framework install guides (currently only doc comments)
+- [x] **6.2** Deployment guide for the pr-service with an env var reference
+- [x] **6.3** Structured logging wired to an optional error sink. Sentry loads
+      dynamically only when `SENTRY_DSN` is set and the package is installed; a
+      missing or broken sink never affects a request.
+- [x] **6.4** Annotation package made publishable — `files`, `exports`, licence,
+      keywords, its own README, `npm pack` verified at 9 files / 9.9 kB.
+      Publishing itself is yours to run: `npm publish --prefix annotation`
