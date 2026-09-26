@@ -1,0 +1,830 @@
+/* ============================================================
+   Inline Edit Tool — UI chrome
+
+   Injected into a closed shadow root: these selectors never
+   reach the host page and the host page's CSS never reaches
+   them. `all: initial` on :host resets inherited typography so
+   the tool looks the same on every site.
+   ============================================================ */
+
+:host {
+  all: initial;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Tokens ---------------------------------------------------- */
+:host {
+  --iet-surface: rgba(24, 24, 27, 0.92);
+  --iet-surface-solid: #18181b;
+  --iet-raised: #27272a;
+  --iet-line: rgba(255, 255, 255, 0.09);
+  --iet-text: #fafafa;
+  --iet-muted: #a1a1aa;
+  --iet-dim: #71717a;
+
+  /* Accents: magenta marks the thing you are acting on, violet the
+     thing you are merely pointing at, emerald what you already changed. */
+  --iet-accent: #ec4899;
+  --iet-accent-deep: #be2a7d;
+  --iet-hover: #a855f7;
+  --iet-done: #10b981;
+  --iet-warn: #f59e0b;
+  --iet-danger: #ef4444;
+
+  --iet-shadow: 0 10px 38px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --iet-radius: 16px;
+}
+
+/* ============================================================
+   Tool rail
+   ============================================================ */
+#__iet-rail {
+  position: fixed;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 7px 6px;
+  background: var(--iet-surface);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid var(--iet-line);
+  border-radius: var(--iet-radius);
+  box-shadow: var(--iet-shadow);
+  z-index: 2147483647;
+  user-select: none;
+}
+
+.__iet-brand {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  margin-bottom: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: linear-gradient(135deg, var(--iet-accent), #8b5cf6);
+  cursor: pointer;
+  transition: transform 0.13s ease, box-shadow 0.13s ease;
+}
+
+.__iet-brand:hover {
+  transform: scale(1.06);
+  box-shadow: 0 3px 12px rgba(236, 72, 153, 0.45);
+}
+
+.__iet-brand:active {
+  transform: scale(0.96);
+}
+
+.__iet-brand:hover .__iet-tip,
+.__iet-brand:focus-visible .__iet-tip {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+#__iet-rail[data-side='right'] {
+  left: auto;
+  right: 12px;
+}
+
+/* Tooltips have to open away from the edge the rail is docked to. */
+#__iet-rail[data-side='right'] .__iet-tip {
+  left: auto;
+  right: calc(100% + 12px);
+  transform: translateY(-50%) translateX(4px);
+}
+
+#__iet-rail[data-side='right'] .__iet-tool:hover .__iet-tip,
+#__iet-rail[data-side='right'] .__iet-tool:focus-visible .__iet-tip,
+#__iet-rail[data-side='right'] .__iet-brand:hover .__iet-tip,
+#__iet-rail[data-side='right'] .__iet-brand:focus-visible .__iet-tip {
+  transform: translateY(-50%) translateX(0);
+}
+
+.__iet-rail-sep {
+  width: 20px;
+  height: 1px;
+  margin: 5px 0;
+  background: var(--iet-line);
+}
+
+.__iet-tool {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--iet-muted);
+  cursor: pointer;
+  transition: background 0.13s ease, color 0.13s ease, transform 0.13s ease;
+}
+
+.__iet-tool:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--iet-text);
+}
+
+.__iet-tool:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.__iet-tool:focus-visible {
+  outline: 2px solid var(--iet-accent);
+  outline-offset: 2px;
+}
+
+.__iet-tool:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* The active tool is the one that decides what a click does, so it is
+   the single strongest thing in the UI. */
+.__iet-tool[aria-pressed='true'] {
+  background: linear-gradient(135deg, var(--iet-accent), var(--iet-accent-deep));
+  color: #fff;
+  box-shadow: 0 3px 12px rgba(236, 72, 153, 0.45);
+}
+
+/* A toggle is a view option, not a mode. Tinting it instead of filling it
+   keeps the active *tool* the only strongly marked control, and borrows the
+   guides' own colour so the button and the lines read as one thing. */
+.__iet-tool[data-toggle='true'][aria-pressed='true'] {
+  background: rgba(168, 85, 247, 0.16);
+  color: var(--iet-hover);
+  box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.4);
+}
+
+.__iet-tool[data-toggle='true'][aria-pressed='true']:hover {
+  background: rgba(168, 85, 247, 0.24);
+}
+
+.__iet-count {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--iet-accent);
+  border: 2px solid var(--iet-surface-solid);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+}
+
+/* Tooltips -------------------------------------------------- */
+.__iet-tip {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%) translateX(-4px);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: var(--iet-raised);
+  border: 1px solid var(--iet-line);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.__iet-tool:hover .__iet-tip,
+.__iet-tool:focus-visible .__iet-tip {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+/* A disabled control should not advertise itself. */
+.__iet-tool:disabled .__iet-tip {
+  display: none;
+}
+
+.__iet-tip-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--iet-text);
+}
+
+.__iet-tip-sub {
+  font-size: 10.5px;
+  color: var(--iet-dim);
+}
+
+/* ============================================================
+   Alignment guides
+
+   Four dashed rules running from the element's edges to the
+   edges of the viewport, so it is obvious what a thing lines up
+   with. Positioned with transform rather than top/left: it
+   keeps them off the layout path while the pointer moves.
+   ============================================================ */
+.__iet-guides {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483643;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.__iet-guide {
+  position: absolute;
+  opacity: 0.85;
+}
+
+.__iet-guide-h {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 0;
+  border-top: 1px dashed var(--iet-hover);
+}
+
+.__iet-guide-v {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  border-left: 1px dashed var(--iet-hover);
+}
+
+.__iet-guides[data-state='selected'] .__iet-guide-h {
+  border-top-color: var(--iet-accent);
+}
+
+.__iet-guides[data-state='selected'] .__iet-guide-v {
+  border-left-color: var(--iet-accent);
+}
+
+.__iet-guides[data-state='edited'] .__iet-guide-h {
+  border-top-color: var(--iet-done);
+}
+
+.__iet-guides[data-state='edited'] .__iet-guide-v {
+  border-left-color: var(--iet-done);
+}
+
+/* ============================================================
+   Element label
+   ============================================================ */
+#__iet-label,
+.__iet-label {
+  position: fixed;
+  z-index: 2147483644;
+  display: flex;
+  align-items: stretch;
+  max-width: min(520px, 70vw);
+  border-radius: 5px;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
+}
+
+.__iet-label-tag,
+.__iet-label-src,
+.__iet-label-flag {
+  padding: 5px 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.__iet-label-tag {
+  background: var(--iet-hover);
+  color: #fff;
+}
+
+.__iet-label-src {
+  background: var(--iet-surface-solid);
+  color: #e4e4e7;
+}
+
+.__iet-label-src[data-unmapped='true'] {
+  color: var(--iet-warn);
+  font-style: italic;
+}
+
+.__iet-label-flag {
+  background: #312e81;
+  color: #c7d2fe;
+}
+
+.__iet-label[data-state='selected'] .__iet-label-tag {
+  background: var(--iet-accent);
+}
+
+.__iet-label[data-state='edited'] .__iet-label-tag {
+  background: var(--iet-done);
+}
+
+/* ============================================================
+   Inspector card
+   ============================================================ */
+#__iet-inspector {
+  position: fixed;
+  z-index: 2147483645;
+  width: 320px;
+  max-width: 80vw;
+  padding: 14px;
+  background: var(--iet-surface-solid);
+  border: 1px solid var(--iet-line);
+  border-radius: 12px;
+  box-shadow: var(--iet-shadow);
+  color: var(--iet-text);
+}
+
+#__iet-inspector-title,
+.__iet-inspector-title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--iet-accent);
+  margin-bottom: 10px;
+  word-break: break-all;
+}
+
+.__iet-inspector-rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 12px;
+  margin: 0;
+  font-size: 11.5px;
+}
+
+.__iet-inspector-rows dt {
+  color: var(--iet-dim);
+  white-space: nowrap;
+}
+
+.__iet-inspector-rows dd {
+  margin: 0;
+  color: var(--iet-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-word;
+}
+
+.__iet-inspector-note {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--iet-line);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--iet-warn);
+}
+
+/* ============================================================
+   Toast
+   ============================================================ */
+#__iet-toast {
+  position: fixed;
+  left: 66px;
+  bottom: 24px;
+  z-index: 2147483647;
+  max-width: 340px;
+  padding: 10px 14px;
+  background: var(--iet-surface-solid);
+  border: 1px solid var(--iet-line);
+  border-left: 3px solid var(--iet-accent);
+  border-radius: 9px;
+  box-shadow: var(--iet-shadow);
+  color: var(--iet-text);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+#__iet-toast[data-tone='done'] {
+  border-left-color: var(--iet-done);
+}
+
+#__iet-toast[data-tone='warn'] {
+  border-left-color: var(--iet-warn);
+}
+
+#__iet-toast[data-tone='error'] {
+  border-left-color: var(--iet-danger);
+}
+
+.__iet-toast-in {
+  animation: __iet-slide-in 0.18s ease-out;
+}
+
+@keyframes __iet-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ============================================================
+   Editing overlay
+   Typing happens here rather than in the page element, so a
+   framework re-render cannot discard what was typed.
+   ============================================================ */
+.__iet-edit-overlay {
+  position: fixed;
+  z-index: 2147483646;
+  box-sizing: content-box;
+  margin: 0;
+  border-radius: 3px;
+  outline: 2px solid var(--iet-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px rgba(236, 72, 153, 0.16), 0 4px 18px rgba(0, 0, 0, 0.2);
+  cursor: text;
+  overflow-wrap: break-word;
+}
+
+/* ============================================================
+   Breadcrumb — reach an editable ancestor of a nested element
+   ============================================================ */
+#__iet-crumbs {
+  position: fixed;
+  z-index: 2147483645;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  max-width: 90vw;
+  padding: 3px 5px;
+  background: var(--iet-surface);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--iet-line);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.__iet-crumb {
+  padding: 3px 6px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--iet-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.__iet-crumb:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--iet-text);
+}
+
+.__iet-crumb-sep {
+  color: var(--iet-dim);
+  font-size: 11px;
+}
+
+/* ============================================================
+   Review panel
+   ============================================================ */
+#__iet-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(9, 9, 11, 0.6);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+
+#__iet-panel-card {
+  width: 640px;
+  max-width: 100%;
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 24px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  color: #18181b;
+  font-size: 13px;
+}
+
+#__iet-panel-card h2 {
+  margin: 0 0 16px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+#__iet-edits-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 18px;
+  font-size: 12px;
+}
+
+#__iet-edits-table th {
+  padding: 7px 9px;
+  border-bottom: 1px solid #e4e4e7;
+  color: #71717a;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+#__iet-edits-table td {
+  padding: 8px 9px;
+  border-bottom: 1px solid #f4f4f5;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+#__iet-edits-table td:first-child {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #71717a;
+  white-space: nowrap;
+}
+
+#__iet-edits-table td:nth-last-child(2) {
+  color: #b91c1c;
+  text-decoration: line-through;
+}
+
+#__iet-edits-table td:last-child {
+  color: #15803d;
+  font-weight: 500;
+}
+
+#__iet-note-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #52525b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+#__iet-note {
+  width: 100%;
+  min-height: 62px;
+  padding: 9px 11px;
+  border: 1px solid #d4d4d8;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12.5px;
+  resize: vertical;
+}
+
+#__iet-note:focus {
+  outline: none;
+  border-color: var(--iet-accent);
+  box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.15);
+}
+
+#__iet-panel-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 20px;
+}
+
+#__iet-panel-cancel,
+#__iet-panel-confirm {
+  padding: 9px 16px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#__iet-panel-cancel {
+  border: 1px solid #d4d4d8;
+  background: #fff;
+  color: #3f3f46;
+}
+
+#__iet-panel-cancel:hover {
+  background: #f4f4f5;
+}
+
+#__iet-panel-confirm {
+  border: 1px solid var(--iet-accent);
+  background: var(--iet-accent);
+  color: #fff;
+}
+
+#__iet-panel-confirm:hover:not(:disabled) {
+  background: var(--iet-accent-deep);
+  border-color: var(--iet-accent-deep);
+}
+
+#__iet-panel-confirm:disabled {
+  background: #e4e4e7;
+  border-color: #e4e4e7;
+  color: #a1a1aa;
+  cursor: not-allowed;
+}
+
+#__iet-source-warn,
+#__iet-multipage-note {
+  margin: 0 0 14px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+#__iet-source-warn {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+#__iet-multipage-note {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+}
+
+/* Connection ------------------------------------------------ */
+#__iet-conn-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e4e4e7;
+}
+
+#__iet-conn-title {
+  margin-bottom: 11px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #52525b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.__iet-conn-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+
+.__iet-conn-row label {
+  width: 86px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #52525b;
+}
+
+.__iet-conn-row select,
+.__iet-conn-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid #d4d4d8;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12.5px;
+  background: #fff;
+}
+
+.__iet-conn-row select:focus,
+.__iet-conn-row input:focus {
+  outline: none;
+  border-color: var(--iet-accent);
+  box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.15);
+}
+
+#__iet-connect-btn {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: #18181b;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#__iet-connect-btn:hover:not(:disabled) {
+  background: #3f3f46;
+}
+
+#__iet-connect-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+#__iet-conn-status {
+  margin-bottom: 11px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+#__iet-detected-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 11px;
+  padding: 9px 11px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+}
+
+#__iet-detected-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #14532d;
+  word-break: break-all;
+}
+
+#__iet-change-target {
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #2563eb;
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+#__iet-change-target:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.__iet-branch-hint {
+  margin-left: 6px;
+  color: #71717a;
+  font-size: 10px;
+  font-style: italic;
+}
+
+.__iet-hint,
+.__iet-warn {
+  margin: 8px 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.__iet-hint {
+  color: #71717a;
+}
+
+.__iet-warn {
+  color: #b45309;
+}
+
+#__iet-result {
+  min-height: 20px;
+  margin-top: 11px;
+  font-size: 12.5px;
+  word-break: break-word;
+}
+
+#__iet-result a {
+  color: #2563eb;
+}

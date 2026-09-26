@@ -1,0 +1,25 @@
+{
+  "name": "quartalyst-inline-edit-tool",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n \"extension,pr-service\" -c \"cyan,green\" \"npm run dev:ext\" \"npm run dev:svc\"",
+    "dev:ext": "cd inline-edit-tool/extension && node build.js --watch",
+    "dev:svc": "npm --prefix overlay/pr-service run dev",
+    "build:ext": "cd inline-edit-tool/extension && node build.js",
+    "preview":   "npm run build:ext && node scripts/serve-preview.mjs",
+    "install:all": "npm install --prefix inline-edit-tool/extension && npm install --prefix overlay/pr-service",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e":   "vitest run --config vitest.e2e.config.js",
+    "check:no-annotations": "node scripts/check-no-annotations.mjs"
+  },
+  "devDependencies": {
+    "@babel/core": "^8.0.6",
+    "@babel/plugin-syntax-jsx": "^8.0.1",
+    "concurrently": "^8.0.0",
+    "happy-dom": "^20.14.5",
+    "playwright": "^1.63.0",
+    "vitest": "^2.1.0"
+  }
+}

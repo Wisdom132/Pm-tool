@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Inline Edit Tool",
+  "version": "1.0.0",
+  "description": "Click text on any annotated site, edit inline, and open a GitHub PR.",
+  "permissions": ["activeTab", "storage", "scripting", "identity", "sidePanel", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["page.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Inline Edit Tool"
+  }
+}

@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Environment variables — never commit secrets
+.env
+.env.local
+.env.*.local
+
+# Next.js build output
+.next/
+out/
+
+# Extension build output (run `node build.js` to regenerate)
+inline-edit-tool/extension/dist/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Lock files (keep package-lock.json / yarn.lock but ignore pnpm-lock if mixed)
+# Uncomment if you don't want to commit lock files:
+# package-lock.json
+# yarn.lock

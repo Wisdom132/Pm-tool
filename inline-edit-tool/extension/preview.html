@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en"
+      data-edit-branch="feature/copy-fixes"
+      data-edit-commit="9f1c2ab3d4e5f60718293a4b5c6d7e8f90a1b2c3"
+      data-edit-repo="acme/site">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inline Edit Tool — Preview</title>
+
+  <!-- The real page-level decorations, not a copy of them. -->
+  <link rel="stylesheet" href="dist/page.css" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      min-height: 100vh;
+      padding-bottom: 80px;
+    }
+
+    .preview-banner {
+      background: #1a1a2e;
+      color: #e2e8f0;
+      padding: 10px 48px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .preview-banner code {
+      font-family: Menlo, Consolas, monospace;
+      background: #2d2d4e;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+
+    .site-nav {
+      background: #fff;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 14px 48px;
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+
+    .site-logo { font-weight: 700; font-size: 18px; color: #1a1a2e; }
+    .site-nav a { text-decoration: none; color: #64748b; font-size: 14px; }
+
+    .hero { padding: 72px 48px; text-align: center; }
+    .hero h1 { font-size: 44px; line-height: 1.15; margin-bottom: 18px; color: #0f172a; }
+    .hero p  { font-size: 18px; color: #475569; max-width: 620px; margin: 0 auto; }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 24px;
+      padding: 0 48px 64px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 24px;
+    }
+
+    .card h3 { font-size: 17px; margin-bottom: 8px; color: #0f172a; }
+    .card p  { font-size: 14px; color: #64748b; line-height: 1.6; }
+
+    .nested {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 48px 24px;
+      font-size: 15px;
+      color: #475569;
+      line-height: 1.7;
+    }
+
+    .nested span { font-weight: 600; color: #1d4ed8; }
+
+    /* Drives the re-render test below. */
+    .counter {
+      padding: 0 48px 48px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    #rerender-count {
+      margin-left: 12px;
+      font-size: 13px;
+      color: #10b981;
+      font-weight: 600;
+    }
+
+    /* Makes a DOM swap visible even when the markup is identical. */
+    @keyframes flash {
+      from { background: rgba(16, 185, 129, 0.16); }
+      to   { background: transparent; }
+    }
+
+    #app.flash { animation: flash 0.45s ease-out; }
+
+    .counter button {
+      font: inherit;
+      font-size: 13px;
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="preview-banner">
+    <strong>Preview mode</strong> — this page runs the real
+    <code>dist/content.js</code> against a stubbed <code>chrome.*</code> API.
+    Open the toolbar with the button below, pick the <strong>pencil</strong>
+    tool, then click any text. The <strong>crosshair</strong> tool shows where
+    text comes from without changing it, and the <strong>IE</strong> badge
+    moves the toolbar to the other side.
+    <br />
+    Use <strong>Re-render</strong> to confirm edits survive a framework
+    replacing the DOM.
+  </div>
+
+  <nav class="site-nav">
+    <span class="site-logo">Acme Corp</span>
+    <a href="#">Product</a>
+    <a href="#">Pricing</a>
+    <a href="#">About</a>
+  </nav>
+
+  <div id="app">
+
+  <section class="hero">
+    <h1 data-editable="true" data-edit-file="src/pages/index.jsx" data-edit-line="12" data-edit-col="4" data-edit-framework="react">
+      Build things that mater
+    </h1>
+    <p data-editable="true" data-edit-file="src/pages/index.jsx" data-edit-line="15" data-edit-col="4" data-edit-framework="react">
+      The fastest way to ship high-quality products. Trusted by 10,000+ tems worldwide.
+    </p>
+  </section>
+
+  <div class="features" id="feature-grid">
+    <div class="card">
+      <h3 data-editable="true" data-edit-file="src/components/Features.jsx" data-edit-line="8" data-edit-col="6" data-edit-framework="react">
+        Blazing fast
+      </h3>
+      <p data-editable="true" data-edit-file="src/components/Features.jsx" data-edit-line="9" data-edit-col="6" data-edit-framework="react">
+        Optimised for perfomance from day one. No compromises.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3 data-editable="true" data-edit-file="src/components/Features.jsx" data-edit-line="16" data-edit-col="6" data-edit-framework="react">
+        Developer firendly
+      </h3>
+      <p data-editable="true" data-edit-file="src/components/Features.jsx" data-edit-line="17" data-edit-col="6" data-edit-framework="react">
+        Great DX out of the bocks. Works with your existing tools.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3 data-editable="true" data-edit-file="src/components/Features.jsx" data-edit-line="24" data-edit-col="6" data-edit-framework="react">
+        Scals with you
+      </h3>
+      <p data-editable="true" data-edit-file="src/components/Features.jsx" data-edit-line="25" data-edit-col="6" data-edit-framework="react">
+        From side project to enterprise. No rewrite required.
+      </p>
+    </div>
+  </div>
+
+  <!-- Nested editables: hovering the inner <span> must still let you reach
+       the outer <p>, which is what the breadcrumb is for. -->
+  <section class="nested">
+    <p data-editable="true" data-edit-file="src/pages/index.jsx" data-edit-line="31" data-edit-col="6" data-edit-framework="react">
+      Read our
+      <span data-editable="true" data-edit-file="src/pages/index.jsx" data-edit-line="32" data-edit-col="8" data-edit-framework="react">getting started guide</span>
+      to ship your first change.
+    </p>
+    <p data-editable="true" data-edit-file="src/pages/index.jsx" data-edit-line="36" data-edit-col="6" data-edit-framework="react" data-edit-i18n-key="home.cta.subtitle">
+      Translated copy lives in a locale file
+    </p>
+  </section>
+
+  </div><!-- /#app -->
+
+  <div class="counter">
+    <button id="rerender">Re-render page (simulate React)</button>
+    <span id="rerender-count"></span>
+    <button id="show-toolbar">Show toolbar</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       chrome.* stub, loaded before the real content script.
+       The extension code below this point is the shipped
+       build — no forked copy to drift out of sync.
+       ══════════════════════════════════════════════════════ -->
+  <script src="preview-shim.js"></script>
+  <script src="dist/content.js"></script>
+
+  <script>
+    // Replace the whole content root with its original markup, the way a
+    // framework does on a state change. Every pending edit and decoration
+    // must come back by itself.
+    //
+    // This covers the hero as well as the cards: re-rendering only part of
+    // the page made the button look broken when you had edited the heading.
+    const app = document.getElementById('app');
+    const pristine = app.innerHTML;
+    let renders = 0;
+
+    document.getElementById('rerender').addEventListener('click', () => {
+      app.innerHTML = pristine;
+
+      renders++;
+      document.getElementById('rerender-count').textContent =
+        `re-rendered ${renders}\u00D7 \u2014 edits should survive`;
+
+      // Brief flash, so it is obvious the DOM really was replaced.
+      app.classList.remove('flash');
+      void app.offsetWidth;
+      app.classList.add('flash');
+
+      console.log('[preview] #app re-rendered from original markup');
+    });
+
+    document.getElementById('show-toolbar').addEventListener('click', () => {
+      chrome.runtime.__dispatchToContent({ type: 'TOGGLE_TOOLBAR' });
+    });
+  </script>
+</body>
+</html>

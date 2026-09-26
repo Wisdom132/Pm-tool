@@ -1,0 +1,27 @@
+{
+  "name": "@quartalyst/inline-edit-annotation",
+  "version": "1.0.0",
+  "description": "Build-time annotation plugins for the Inline Edit Tool (React/Vue/Angular)",
+  "private": true,
+  "main": "react/index.js",
+  "exports": {
+    "./react": "./react/index.js",
+    "./vue": "./vue/index.js",
+    "./angular": "./angular/index.js",
+    "./angular/webpack-config": "./angular/webpack.config.js",
+    "./angular/loader": "./angular/template-loader.js"
+  },
+  "peerDependencies": {
+    "@babel/core": ">=7",
+    "@vue/compiler-sfc": ">=3",
+    "@vue/compiler-dom": ">=3"
+  },
+  "peerDependenciesMeta": {
+    "@babel/core": { "optional": true },
+    "@vue/compiler-sfc": { "optional": true },
+    "@vue/compiler-dom": { "optional": true }
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

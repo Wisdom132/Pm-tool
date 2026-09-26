@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Inline Edit Tool</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --accent: #1d4ed8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      color: var(--fg);
+      background: var(--bg);
+    }
+
+    h1 {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0 0 12px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    button {
+      font: inherit;
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #f9fafb;
+      color: var(--fg);
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) { background: #f3f4f6; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    button.primary:hover:not(:disabled) { background: #1e40af; }
+
+    button.on {
+      background: #1d4ed8;
+      border-color: #1d4ed8;
+      color: #fff;
+    }
+
+    #summary {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 12px 0 8px;
+    }
+
+    .page-group { margin-bottom: 14px; }
+
+    .page-head {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 6px;
+      word-break: break-all;
+    }
+
+    .page-head .current {
+      color: #16a34a;
+      text-transform: none;
+      letter-spacing: 0;
+      font-weight: 600;
+    }
+
+    .edit {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .edit-body { flex: 1; min-width: 0; }
+
+    .edit-file {
+      font-family: Menlo, Consolas, monospace;
+      font-size: 10px;
+      color: var(--muted);
+      margin-bottom: 2px;
+      word-break: break-all;
+    }
+
+    .edit-before {
+      color: #b91c1c;
+      text-decoration: line-through;
+      word-break: break-word;
+    }
+
+    .edit-after {
+      color: #15803d;
+      word-break: break-word;
+    }
+
+    .remove {
+      flex-shrink: 0;
+      border: none;
+      background: none;
+      color: var(--muted);
+      padding: 2px 5px;
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    .remove:hover { color: #dc2626; background: #fef2f2; }
+
+    #empty {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+      padding: 20px 0;
+      text-align: center;
+    }
+
+    #actions {
+      position: sticky;
+      bottom: 0;
+      background: var(--bg);
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      margin-top: 12px;
+    }
+
+    #unavailable {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <h1>Inline Edit Tool</h1>
+
+  <div class="row">
+    <button id="tool-inspect" data-tool="inspect">Inspect</button>
+    <button id="tool-edit" data-tool="edit">Edit text</button>
+  </div>
+
+  <div class="row" style="margin-top:8px">
+    <button id="undo-btn" disabled>Undo</button>
+    <button id="redo-btn" disabled>Redo</button>
+  </div>
+
+  <p id="unavailable" style="display:none">
+    This page cannot be edited — the extension does not run on browser or
+    extension pages.
+  </p>
+
+  <div id="summary"></div>
+  <div id="list"></div>
+  <p id="empty" style="display:none">
+    No pending edits.<br />Pick <strong>Edit text</strong>, then click any text on the page.
+  </p>
+
+  <div id="actions">
+    <button id="submit-btn" class="primary" disabled>Review &amp; open PR</button>
+    <button id="discard-btn" disabled>Discard all</button>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

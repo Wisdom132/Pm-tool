@@ -1,0 +1,51 @@
+/* ============================================================
+   Inline Edit Tool — page-level decorations
+
+   These style elements belonging to the host page, so they
+   cannot live in the extension's shadow root.
+
+   Everything here uses `outline`, never `border` or `box-shadow`
+   with spread: outline is painted outside the box and does not
+   participate in layout, so highlighting an element can never
+   shift the page underneath it.
+   ============================================================ */
+
+/* Candidate for editing. No paint — only the cursor changes, so a page
+   covered in editable text does not turn into a wall of boxes. */
+.__iet-editable {
+  cursor: pointer;
+}
+
+/* Pointing at it. Violet: "this is what you would act on". */
+.__iet-hovered {
+  outline: 2px solid #a855f7 !important;
+  outline-offset: 2px !important;
+  border-radius: 2px;
+}
+
+/* Acting on it. Magenta matches the active tool in the rail. */
+.__iet-editing {
+  outline: 2px solid #ec4899 !important;
+  outline-offset: 2px !important;
+  border-radius: 2px;
+}
+
+/* Already changed, not yet submitted. Dashed so it reads as pending
+   rather than selected, and stays legible against the solid states. */
+.__iet-dirty {
+  outline: 2px dashed #10b981 !important;
+  outline-offset: 2px !important;
+  border-radius: 2px;
+}
+
+/* A changed element that is also being pointed at keeps the pending
+   colour — its state matters more than the hover. */
+.__iet-dirty.__iet-hovered {
+  outline-style: solid !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .__iet-editable {
+    transition: outline-color 0.1s ease;
+  }
+}

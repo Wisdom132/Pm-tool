@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  build-extension:
+    name: Build extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: inline-edit-tool/extension/package-lock.json
+      - run: npm ci --prefix inline-edit-tool/extension
+      - run: npm run build:ext
+      - name: Verify build output
+        run: |
+          for f in content.js background.js popup.js sidepanel.js \
+                   manifest.json page.css popup.html sidepanel.html; do
+            test -s "inline-edit-tool/extension/dist/$f" || { echo "missing or empty: $f"; exit 1; }
+          done
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix inline-edit-tool/extension
+      # preview.html drives dist/, so the extension must be built first.
+      - run: npm run build:ext
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  build-service:
+    name: Build pr-service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: overlay/pr-service/package-lock.json
+      - run: npm install --prefix overlay/pr-service
+      - run: npm run build --prefix overlay/pr-service
+        env:
+          TOKEN_SECRET: ci-placeholder-secret-not-used-at-build-time
+
+  annotation-guard:
+    name: No annotations in production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # Guards the guard: it must reject an annotated file and accept a clean one.
+      - name: Self-check
+        run: |
+          mkdir -p /tmp/clean /tmp/dirty
+          echo '<html><h1>Hi</h1></html>' > /tmp/clean/index.html
+          echo '<h1 data-edit-file="src/Hero.tsx">Hi</h1>' > /tmp/dirty/index.html
+          node scripts/check-no-annotations.mjs /tmp/clean
+          if node scripts/check-no-annotations.mjs /tmp/dirty; then
+            echo "guard failed to reject an annotated file"; exit 1
+          fi

@@ -1,0 +1,16 @@
+{
+  "name": "inline-edit-tool-extension",
+  "version": "1.0.0",
+  "description": "Chrome extension for inline text editing with GitHub PR creation",
+  "private": true,
+  "scripts": {
+    "build": "node build.js",
+    "dev":   "node build.js --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
