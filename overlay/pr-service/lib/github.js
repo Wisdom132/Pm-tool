@@ -78,6 +78,28 @@ export async function commitFileChange({ token, owner, repo, path, branch, conte
   });
 }
 
+/**
+ * Commit a binary file. Separate from commitFileChange because the content
+ * is already base64 and must not be re-encoded from a UTF-8 string.
+ */
+export async function commitBinaryFile({ token, owner, repo, path, branch, base64, message }) {
+  const octokit = client(token);
+
+  // An existing file needs its blob sha to be replaced rather than rejected.
+  let sha;
+  try {
+    const { data } = await octokit.repos.getContent({ owner, repo, path, ref: branch });
+    sha = data.sha;
+  } catch {
+    // New file.
+  }
+
+  await octokit.repos.createOrUpdateFileContents({
+    owner, repo, path, message, branch, sha,
+    content: base64,
+  });
+}
+
 /** Every file path in a branch's tree. Used to locate locale files. */
 export async function listTreePaths({ token, owner, repo, branch }) {
   const octokit = client(token);

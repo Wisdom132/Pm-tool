@@ -931,3 +931,305 @@
 #__iet-result a {
   color: #2563eb;
 }
+
+/* ============================================================
+   Properties panel — attributes, classes, images
+   ============================================================ */
+#__iet-properties {
+  position: fixed;
+  z-index: 2147483645;
+  width: 340px;
+  max-width: 86vw;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 14px;
+  background: var(--iet-surface-solid);
+  border: 1px solid var(--iet-line);
+  border-radius: 12px;
+  box-shadow: var(--iet-shadow);
+  color: var(--iet-text);
+}
+
+.__iet-properties-title {
+  margin-bottom: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--iet-accent);
+}
+
+.__iet-prop-section + .__iet-prop-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--iet-line);
+}
+
+.__iet-prop-section-head {
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--iet-dim);
+}
+
+.__iet-prop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.__iet-prop-label {
+  flex-shrink: 0;
+  width: 78px;
+  font-size: 11.5px;
+  color: var(--iet-muted);
+}
+
+.__iet-prop-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--iet-line);
+  border-radius: 6px;
+  background: #101012;
+  color: var(--iet-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+
+.__iet-prop-input:focus {
+  outline: none;
+  border-color: var(--iet-accent);
+  box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.2);
+}
+
+.__iet-prop-pick {
+  flex-shrink: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--iet-line);
+  border-radius: 6px;
+  background: var(--iet-raised);
+  color: var(--iet-text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.__iet-prop-pick:hover {
+  border-color: var(--iet-accent);
+}
+
+.__iet-prop-note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--iet-dim);
+}
+
+/* Class chips */
+.__iet-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.__iet-chips-empty {
+  font-size: 11px;
+  color: var(--iet-dim);
+  font-style: italic;
+}
+
+.__iet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 7px;
+  border-radius: 5px;
+  background: rgba(168, 85, 247, 0.16);
+  color: #d8b4fe;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+}
+
+.__iet-chip-remove {
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.__iet-chip-remove:hover {
+  opacity: 1;
+  color: var(--iet-danger);
+}
+
+.__iet-chip-input-wrap {
+  position: relative;
+}
+
+.__iet-chip-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--iet-line);
+  border-radius: 6px;
+  background: #101012;
+  color: var(--iet-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+
+.__iet-chip-input:focus {
+  outline: none;
+  border-color: var(--iet-hover);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.2);
+}
+
+.__iet-suggestions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  max-height: 168px;
+  overflow-y: auto;
+  padding: 3px;
+  background: var(--iet-raised);
+  border: 1px solid var(--iet-line);
+  border-radius: 7px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.__iet-suggestion {
+  padding: 5px 7px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--iet-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.__iet-suggestion:hover {
+  background: rgba(168, 85, 247, 0.2);
+}
+
+/* ============================================================
+   Structure bar
+   ============================================================ */
+#__iet-structure {
+  position: fixed;
+  z-index: 2147483645;
+  display: flex;
+  gap: 1px;
+  padding: 3px;
+  background: var(--iet-surface);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--iet-line);
+  border-radius: 9px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.__iet-struct-btn {
+  width: 28px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--iet-muted);
+  cursor: pointer;
+}
+
+.__iet-struct-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--iet-text);
+}
+
+.__iet-struct-btn[data-danger='true']:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+/* An element queued for deletion — still visible, clearly on its way out. */
+.__iet-removed {
+  opacity: 0.4 !important;
+  outline: 2px dashed #ef4444 !important;
+  outline-offset: 2px !important;
+}
+
+/* ============================================================
+   Responsive breakpoints
+   ============================================================ */
+#__iet-breakpoints {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 2147483646;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  background: var(--iet-surface);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--iet-line);
+  border-radius: 12px;
+  box-shadow: var(--iet-shadow);
+}
+
+.__iet-breakpoint {
+  padding: 5px 11px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--iet-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.__iet-breakpoint:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--iet-text);
+}
+
+.__iet-breakpoint[aria-pressed='true'] {
+  background: rgba(168, 85, 247, 0.2);
+  color: #d8b4fe;
+  box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.4);
+}
+
+.__iet-breakpoint-note,
+.__iet-breakpoint-size {
+  font-size: 10.5px;
+  color: var(--iet-dim);
+  white-space: nowrap;
+}
+
+.__iet-breakpoint-note {
+  padding-right: 4px;
+  border-right: 1px solid var(--iet-line);
+  margin-right: 2px;
+}
+
+.__iet-breakpoint-size {
+  padding-left: 6px;
+  border-left: 1px solid var(--iet-line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

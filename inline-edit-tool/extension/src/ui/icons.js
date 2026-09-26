@@ -51,6 +51,35 @@ const SHAPES = {
     ["path", { d: "M10.5 3.5L13 6l-2.5 2.5" }],
   ],
 
+  // Sliders — element properties.
+  properties: [
+    ["path", { d: "M5 21v-7M5 10V3M12 21v-9M12 8V3M19 21v-5M19 12V3" }],
+    ["path", { d: "M2.5 14h5M9.5 8h5M16.5 16h5" }],
+  ],
+
+  // Trash — delete an element.
+  trash: [
+    ["path", { d: "M4 7h16" }],
+    ["path", { d: "M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" }],
+    ["path", { d: "M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" }],
+  ],
+
+  // Overlapping squares — duplicate.
+  copy: [
+    ["rect", { x: 9, y: 9, width: 11, height: 11, rx: 2 }],
+    ["path", { d: "M5 15V5a2 2 0 0 1 2-2h10" }],
+  ],
+
+  arrowUp: [["path", { d: "M12 19V5M6 11l6-6 6 6" }]],
+  arrowDown: [["path", { d: "M12 5v14M18 13l-6 6-6-6" }]],
+
+  // Device frame — responsive preview.
+  responsive: [
+    ["rect", { x: 2, y: 5, width: 13, height: 11, rx: 1.5 }],
+    ["rect", { x: 17, y: 9, width: 5, height: 10, rx: 1.5 }],
+    ["path", { d: "M6 19h5" }],
+  ],
+
   // Crossing rules — alignment guides.
   guides: [
     ["path", { d: "M3 9h18M3 15h18M9 3v18M15 3v18", "stroke-dasharray": "2 2.5" }],

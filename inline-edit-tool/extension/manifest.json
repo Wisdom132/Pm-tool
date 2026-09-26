@@ -3,7 +3,7 @@
   "name": "Inline Edit Tool",
   "version": "1.0.0",
   "description": "Click text on any annotated site, edit inline, and open a GitHub PR.",
-  "permissions": ["activeTab", "storage", "scripting", "identity", "sidePanel", "tabs"],
+  "permissions": ["activeTab", "storage", "scripting", "identity", "sidePanel", "tabs", "windows"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

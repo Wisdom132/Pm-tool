@@ -19,7 +19,7 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: false });
 });
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // ── GitHub OAuth flow ──────────────────────────────────────
   if (message.type === 'GITHUB_AUTH') {
@@ -61,6 +61,47 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
         if (!res.ok) sendResponse({ error: data.error || `HTTP ${res.status}` });
         else         sendResponse({ data });
+      } catch (err) {
+        sendResponse({ error: err.message });
+      }
+    })();
+    return true;
+  }
+
+  // ── Resize the window for a breakpoint preview ─────────────
+  // Media queries answer to the viewport, so previewing a breakpoint means
+  // genuinely resizing the window; scaling the page would not trigger them.
+  if (message.type === 'RESIZE_WINDOW') {
+    (async () => {
+      try {
+        // Added to the manifest after the first release; an extension loaded
+        // before that has to be reloaded before Chrome grants it.
+        if (!chrome.windows?.update) {
+          sendResponse({
+            error:
+              'The "windows" permission is missing. Reload the extension at chrome://extensions.',
+          });
+          return;
+        }
+
+        // Resize the window the request came from. getCurrent() in a
+        // service worker returns the last *focused* window, which is not
+        // necessarily the one the page is in.
+        const windowId = sender?.tab?.windowId ?? (await chrome.windows.getCurrent()).id;
+
+        // A maximised or full-screen window ignores width and height, so it
+        // has to be restored first.
+        const target = await chrome.windows.get(windowId);
+        if (target.state !== 'normal') {
+          await chrome.windows.update(windowId, { state: 'normal' });
+        }
+
+        const updated = await chrome.windows.update(windowId, {
+          width: Math.round(message.payload.width),
+          height: Math.round(message.payload.height),
+        });
+
+        sendResponse({ ok: true, width: updated.width, height: updated.height });
       } catch (err) {
         sendResponse({ error: err.message });
       }

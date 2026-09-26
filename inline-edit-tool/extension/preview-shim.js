@@ -10,6 +10,11 @@
 // ============================================================
 
 (function () {
+  // The UI lives in a closed shadow root. This demo page opts into exposing
+  // it so the end-to-end tests can drive real controls instead of clicking
+  // at guessed coordinates.
+  window.__IET_ALLOW_TEST_HOOKS__ = true;
+
   const FAKE_REPOS = [
     { full_name: "acme/site", private: false },
     { full_name: "acme/marketing", private: true },
@@ -88,6 +93,18 @@
       return { error: `preview shim: unhandled path ${path}` };
     }
 
+    if (type === "RESIZE_WINDOW") {
+      // A web page cannot resize the browser window — only the installed
+      // extension can, through chrome.windows. Reporting success here made
+      // the feature look broken rather than unsupported.
+      console.log("[preview] would resize window to", payload.width, "x", payload.height);
+      return {
+        error:
+          "Resizing needs the installed extension \u2014 a web page cannot resize the browser window.",
+        unsupported: true,
+      };
+    }
+
     if (type === "CREATE_PR") {
       await delay(900);
       console.log("[preview] create-pr payload", payload);
@@ -124,6 +141,14 @@
         addListener(fn) {
           listeners.push(fn);
         },
+      },
+    },
+    windows: {
+      async getCurrent() {
+        return { id: 1 };
+      },
+      async update() {
+        return { id: 1 };
       },
     },
     tabs: {

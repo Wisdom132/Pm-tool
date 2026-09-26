@@ -5,6 +5,7 @@ import {
   compareBuildCommit,
   getFileContent,
   commitFileChange,
+  commitBinaryFile,
   openPullRequest,
 } from '../../lib/github.js';
 import { buildCommitMessage, buildPrBody } from '../../lib/patcher.js';
@@ -130,6 +131,33 @@ export default async function handler(req, res) {
     const failures = [];
     const allApplied = [];
     let committedFiles = 0;
+
+    // Uploaded images first: the source change points at these paths, so
+    // committing them afterwards would leave the branch briefly broken.
+    for (const edit of withSource) {
+      if (!edit.upload?.dataUrl) continue;
+
+      const base64 = String(edit.upload.dataUrl).split(',')[1];
+      if (!base64) {
+        failures.push({ ...edit, reason: 'Uploaded image was not readable.' });
+        continue;
+      }
+
+      try {
+        await commitBinaryFile({
+          token: writeToken, owner, repo: repoName,
+          path: edit.upload.path,
+          branch: branchName,
+          base64,
+          message: `inline-edit: add ${edit.upload.path}`,
+        });
+        log.info('create_pr.image_committed', {
+          repo, path: edit.upload.path, bytes: edit.upload.size || null,
+        });
+      } catch (err) {
+        failures.push({ ...edit, reason: `Could not commit image: ${err.message}` });
+      }
+    }
 
     for (const [filePath, fileEdits] of Object.entries(byFile)) {
       const { content: original, sha } = await getFileContent({

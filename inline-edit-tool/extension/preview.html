@@ -51,6 +51,12 @@
     .site-nav a { text-decoration: none; color: #64748b; font-size: 14px; }
 
     .hero { padding: 72px 48px; text-align: center; }
+    .hero-logo {
+      width: 72px; height: 72px; margin: 0 auto 20px;
+      display: block; border-radius: 16px;
+      background: linear-gradient(135deg, #ec4899, #8b5cf6);
+    }
+
     .hero h1 { font-size: 44px; line-height: 1.15; margin-bottom: 18px; color: #0f172a; }
     .hero p  { font-size: 18px; color: #475569; max-width: 620px; margin: 0 auto; }
 
@@ -83,6 +89,10 @@
     }
 
     .nested span { font-weight: 600; color: #1d4ed8; }
+
+    /* Three siblings, so reordering has somewhere to go. */
+    #steps { margin: 14px 0 0 20px; }
+    #steps li { margin-bottom: 4px; }
 
     /* Drives the re-render test below. */
     .counter {
@@ -129,6 +139,9 @@
     <br />
     Use <strong>Re-render</strong> to confirm edits survive a framework
     replacing the DOM.
+    <br />
+    <em>Responsive preview cannot resize the window from a web page — that
+    one only works in the installed extension.</em>
   </div>
 
   <nav class="site-nav">
@@ -141,6 +154,10 @@
   <div id="app">
 
   <section class="hero">
+    <img id="logo" class="hero-logo rounded shadow-sm"
+         src="/logo.png" alt="Acme Corp logo" width="72" height="72"
+         data-editable="true" data-edit-file="src/pages/index.jsx"
+         data-edit-line="9" data-edit-col="4" data-edit-framework="react" />
     <h1 data-editable="true" data-edit-file="src/pages/index.jsx" data-edit-line="12" data-edit-col="4" data-edit-framework="react">
       Build things that mater
     </h1>
@@ -189,6 +206,11 @@
     <p data-editable="true" data-edit-file="src/pages/index.jsx" data-edit-line="36" data-edit-col="6" data-edit-framework="react" data-edit-i18n-key="home.cta.subtitle">
       Translated copy lives in a locale file
     </p>
+    <ul id="steps">
+      <li data-editable="true" data-edit-file="src/pages/index.jsx" data-edit-line="44" data-edit-col="8" data-edit-framework="react">Install the plugin</li>
+      <li data-editable="true" data-edit-file="src/pages/index.jsx" data-edit-line="45" data-edit-col="8" data-edit-framework="react">Deploy a preview</li>
+      <li data-editable="true" data-edit-file="src/pages/index.jsx" data-edit-line="46" data-edit-col="8" data-edit-framework="react">Edit and open a PR</li>
+    </ul>
   </section>
 
   </div><!-- /#app -->

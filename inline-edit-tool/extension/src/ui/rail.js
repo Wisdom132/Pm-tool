@@ -17,11 +17,25 @@ const P = "__iet";
 export const TOOL = {
   INSPECT: "inspect",
   EDIT: "edit",
+  PROPERTIES: "properties",
+  STRUCTURE: "structure",
 };
 
 const TOOLS = [
   { id: TOOL.INSPECT, icon: "inspect", label: "Inspect", hint: "See where text comes from" },
   { id: TOOL.EDIT, icon: "edit", label: "Edit text", hint: "Click any text to rewrite it" },
+  {
+    id: TOOL.PROPERTIES,
+    icon: "properties",
+    label: "Properties",
+    hint: "Links, alt text and classes",
+  },
+  {
+    id: TOOL.STRUCTURE,
+    icon: "copy",
+    label: "Rearrange",
+    hint: "Move, duplicate or delete",
+  },
 ];
 
 /**
@@ -29,6 +43,12 @@ const TOOLS = [
  * turning one on must not deselect the active tool.
  */
 const TOGGLES = [
+  {
+    id: "responsive",
+    icon: "responsive",
+    label: "Responsive",
+    hint: "Resize to a breakpoint",
+  },
   {
     id: "guides",
     icon: "guides",
@@ -159,9 +179,10 @@ export function createRail({ onTool, onAction, onToggle }) {
     return hr;
   }
 
-  function setToggle(id, on) {
+  /** @param {{silent?: boolean}} opts  silent when restoring a stored value */
+  function setToggle(id, on, { silent = false } = {}) {
     buttons.get(id).setAttribute("aria-pressed", String(Boolean(on)));
-    onToggle?.(id, Boolean(on));
+    if (!silent) onToggle?.(id, Boolean(on));
   }
 
   function selectTool(id) {

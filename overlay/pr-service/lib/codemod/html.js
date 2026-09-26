@@ -1,14 +1,13 @@
 /**
  * HTML codemod, used for Angular templates and plain .html files.
  *
- * No HTML parser is pulled in: the annotation side already scans templates
- * with a quote-aware tag scanner, and reusing the same shape here keeps the
- * two consistent. Only elements whose content is pure text are considered,
- * which is exactly the set the annotator marks editable.
+ * Ranges come from a depth-aware scanner rather than a "first closing tag
+ * wins" search, so nested elements of the same name resolve correctly.
  */
 
 import MagicString from 'magic-string';
 import { chooseCandidate, describeFailure } from './locate.js';
+import { findElements, lineAt, columnAt } from './element-range.js';
 
 const TEXT_TAGS = [
   'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -17,67 +16,50 @@ const TEXT_TAGS = [
   'strong', 'em', 'small', 'b', 'i',
 ];
 
-const OPEN_TAG = new RegExp(`<(${TEXT_TAGS.join('|')})(?=[\\s>])`, 'gi');
-
-function lineAt(source, offset) {
-  let line = 1;
-  for (let i = 0; i < offset; i++) if (source[i] === '\n') line++;
-  return line;
-}
-
-function columnAt(source, offset) {
-  const lastBreak = source.lastIndexOf('\n', offset - 1);
-  return offset - lastBreak - 1;
-}
-
-/** End of the opening tag, skipping '>' inside quoted attribute values. */
-function findOpenTagEnd(source, startIdx) {
-  let i = startIdx + 1;
-  let inStr = false;
-  let strCh = '';
-  while (i < source.length) {
-    const ch = source[i];
-    if (inStr) {
-      if (ch === strCh) inStr = false;
-    } else if (ch === '"' || ch === "'") {
-      inStr = true;
-      strCh = ch;
-    } else if (ch === '>') {
-      return i + 1;
-    }
-    i++;
-  }
-  return source.length;
-}
-
+/** Elements whose content is purely text, so it can be replaced wholesale. */
 function collectTextNodes(source) {
   const found = [];
-  OPEN_TAG.lastIndex = 0;
-  let match;
 
-  while ((match = OPEN_TAG.exec(source)) !== null) {
-    const tagStart = match.index;
-    const tagName = match[1].toLowerCase();
+  for (const range of findElements(source, TEXT_TAGS)) {
+    if (range.selfClosing) continue;
 
-    const openEnd = findOpenTagEnd(source, tagStart);
-    if (source.slice(tagStart, openEnd).trimEnd().endsWith('/>')) continue;
-
-    const rest = source.slice(openEnd);
-    const close = new RegExp(`</${tagName}\\s*>`, 'i').exec(rest);
-    if (!close) continue;
-
-    const inner = rest.slice(0, close.index);
-    // Skip anything containing markup or an interpolation: replacing the
-    // whole inner range would destroy it.
+    const inner = source.slice(range.innerStart, range.innerEnd);
+    // Markup or an interpolation inside means rewriting would destroy it.
     if (/[<>]/.test(inner) || /\{\{/.test(inner)) continue;
     if (!inner.trim()) continue;
 
     found.push({
-      line: lineAt(source, tagStart),
-      column: columnAt(source, tagStart),
+      line: lineAt(source, range.start),
+      column: columnAt(source, range.start),
       text: inner.replace(/\s+/g, ' ').trim(),
-      node: { start: openEnd, end: openEnd + inner.length },
+      node: { start: range.innerStart, end: range.innerEnd },
     });
+  }
+
+  return found;
+}
+
+/** Attribute values on any element, not just text-bearing ones. */
+function collectAttributes(source) {
+  const found = [];
+  const tagRe = /<([a-zA-Z][\w-]*)((?:\s+[^\s=>]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*)\s*\/?>/g;
+  let tag;
+
+  while ((tag = tagRe.exec(source)) !== null) {
+    const attrsStart = tag.index + 1 + tag[1].length;
+    const attrRe = /([^\s=]+)\s*=\s*"([^"]*)"/g;
+    let attr;
+
+    while ((attr = attrRe.exec(tag[2])) !== null) {
+      const valueStart = attrsStart + attr.index + attr[0].indexOf('"') + 1;
+      found.push({
+        line: lineAt(source, tag.index),
+        column: columnAt(source, tag.index),
+        attribute: attr[1],
+        text: attr[2],
+        node: { start: valueStart, end: valueStart + attr[2].length },
+      });
+    }
   }
 
   return found;
@@ -85,6 +67,7 @@ function collectTextNodes(source) {
 
 export function applyHtmlEdits(source, filePath, edits) {
   const candidates = collectTextNodes(source);
+  const attrCandidates = collectAttributes(source);
   const s = new MagicString(source);
 
   const applied = [];
@@ -92,15 +75,32 @@ export function applyHtmlEdits(source, filePath, edits) {
   const usedRanges = [];
 
   for (const edit of edits) {
-    const chosen = chooseCandidate(candidates, edit);
+    const pool = edit.attribute
+      ? attrCandidates.filter((c) => c.attribute === edit.attribute)
+      : candidates;
+
+    const chosen = chooseCandidate(pool, edit);
     if (!chosen) {
-      failed.push({ edit, reason: describeFailure(candidates, edit) });
+      failed.push({
+        edit,
+        reason:
+          edit.attribute && pool.length === 0
+            ? `No editable ${edit.attribute}="..." found in ${filePath}.`
+            : describeFailure(pool, edit),
+      });
       continue;
     }
 
     const { start, end } = chosen.node;
     if (usedRanges.some((r) => start < r.end && end > r.start)) {
-      failed.push({ edit, reason: `Two edits resolved to the same text in ${filePath}.` });
+      failed.push({ edit, reason: `Two edits resolved to the same place in ${filePath}.` });
+      continue;
+    }
+
+    if (edit.attribute) {
+      s.overwrite(start, end, edit.newText.replace(/"/g, '&quot;'));
+      usedRanges.push({ start, end });
+      applied.push({ ...edit, _match: chosen.match });
       continue;
     }
 
@@ -116,4 +116,4 @@ export function applyHtmlEdits(source, filePath, edits) {
   return { content: s.toString(), applied, failed };
 }
 
-export const __test__ = { collectTextNodes };
+export const __test__ = { collectTextNodes, collectAttributes };

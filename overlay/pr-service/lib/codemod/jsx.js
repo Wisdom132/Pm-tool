@@ -60,6 +60,38 @@ function collectTextNodes(ast) {
   return found;
 }
 
+/**
+ * Collect attribute values that can be rewritten.
+ *
+ * Only plain string literals: `alt="Logo"` can be changed safely, whereas
+ * `alt={caption}` or a template literal points somewhere else entirely and
+ * rewriting it in place would be wrong.
+ */
+function collectAttributes(ast) {
+  const found = [];
+
+  walk(ast.program, (node) => {
+    if (node.type !== 'JSXOpeningElement') return;
+
+    for (const attr of node.attributes || []) {
+      if (attr.type !== 'JSXAttribute') continue;
+      if (attr.name?.type !== 'JSXIdentifier') continue;
+      if (attr.value?.type !== 'StringLiteral') continue;
+
+      found.push({
+        line: node.loc?.start.line,
+        column: node.loc?.start.column,
+        attribute: attr.name.name,
+        text: attr.value.value,
+        // Inside the quotes, so the original quote style survives.
+        node: { start: attr.value.start + 1, end: attr.value.end - 1 },
+      });
+    }
+  });
+
+  return found;
+}
+
 /** Minimal AST walk — babel's traverse is a heavier dependency than needed. */
 function walk(node, visit, seen = new Set()) {
   if (!node || typeof node !== 'object' || seen.has(node)) return;
@@ -88,17 +120,51 @@ function walk(node, visit, seen = new Set()) {
  */
 export function applyJsxEdits(source, filePath, edits) {
   const ast = parseSource(source, filePath);
-  const candidates = collectTextNodes(ast);
+  const textCandidates = collectTextNodes(ast);
+  const attrCandidates = collectAttributes(ast);
   const s = new MagicString(source);
 
   const applied = [];
   const failed = [];
   const usedRanges = [];
 
+  const overlaps = (start, end) =>
+    usedRanges.some((r) => start < r.end && end > r.start);
+
   for (const edit of edits) {
-    const chosen = chooseCandidate(candidates, edit);
+    // Attribute edits target a named attribute on the element, not its text.
+    if (edit.attribute) {
+      const pool = attrCandidates.filter((c) => c.attribute === edit.attribute);
+      const chosen = chooseCandidate(pool, edit);
+
+      if (!chosen) {
+        failed.push({
+          edit,
+          reason:
+            pool.length === 0
+              ? `No editable ${edit.attribute}="..." found in ${filePath}. It may be set from a variable rather than written inline.`
+              : describeFailure(pool, edit),
+        });
+        continue;
+      }
+
+      const { start, end } = chosen.node;
+      if (overlaps(start, end)) {
+        failed.push({ edit, reason: `Two edits resolved to the same attribute in ${filePath}.` });
+        continue;
+      }
+
+      // JSX attribute values are double-quoted here, so a literal quote in
+      // the new value would close the attribute early.
+      s.overwrite(start, end, edit.newText.replace(/"/g, '&quot;'));
+      usedRanges.push({ start, end });
+      applied.push({ ...edit, _match: chosen.match });
+      continue;
+    }
+
+    const chosen = chooseCandidate(textCandidates, edit);
     if (!chosen) {
-      failed.push({ edit, reason: describeFailure(candidates, edit) });
+      failed.push({ edit, reason: describeFailure(textCandidates, edit) });
       continue;
     }
 
@@ -108,7 +174,7 @@ export function applyJsxEdits(source, filePath, edits) {
 
     // Two edits resolving to the same node means the caller sent duplicates;
     // overwriting twice would throw inside magic-string.
-    if (usedRanges.some((r) => start < r.end && end > r.start)) {
+    if (overlaps(start, end)) {
       failed.push({
         edit,
         reason: `Two edits resolved to the same text in ${filePath}.`,
@@ -130,4 +196,4 @@ export function applyJsxEdits(source, filePath, edits) {
   return { content: s.toString(), applied, failed };
 }
 
-export const __test__ = { collectTextNodes, parseSource };
+export const __test__ = { collectTextNodes, collectAttributes, parseSource };

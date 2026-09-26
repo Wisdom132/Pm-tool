@@ -20,6 +20,9 @@ import { openSubmitPanel } from "./submit-panel.js";
 import { createRail, createToast, TOOL } from "./ui/rail.js";
 import { createLabelLayer, createInspectorCard } from "./ui/labels.js";
 import { createGuideLayer } from "./ui/guides.js";
+import { createPropertiesPanel } from "./ui/properties.js";
+import { createStructureBar } from "./ui/structure-bar.js";
+import { BREAKPOINTS, activeBreakpoint, windowSizeFor } from "./ui/viewport.js";
 import {
   EDITABLE_SELECTOR,
   editKey,
@@ -36,9 +39,13 @@ const CLS = {
   hovered: `${P}-hovered`,
   editing: `${P}-editing`,
   dirty: `${P}-dirty`,
+  removed: `${P}-removed`,
 };
 
 const SESSION_STORAGE_KEY = "editSession";
+
+/** chrome.storage.local has a finite quota, and a PR is not a CDN. */
+const MAX_IMAGE_BYTES = 512 * 1024;
 const SIDE_STORAGE_KEY = "railSide";
 const GUIDES_STORAGE_KEY = "guidesEnabled";
 
@@ -51,6 +58,8 @@ let toast = null;
 let labels = null;
 let inspector = null;
 let guides = null;
+let properties = null;
+let structureBar = null;
 let crumbsEl = null;
 
 let activeTool = null;
@@ -63,7 +72,12 @@ let observer = null;
 let panel = null;
 
 /** Tools that need the page decorated and click-interactive. */
-const INTERACTIVE_TOOLS = new Set([TOOL.INSPECT, TOOL.EDIT]);
+const INTERACTIVE_TOOLS = new Set([
+  TOOL.INSPECT,
+  TOOL.EDIT,
+  TOOL.PROPERTIES,
+  TOOL.STRUCTURE,
+]);
 
 // ============================================================
 //  Session persistence
@@ -101,6 +115,12 @@ function buildUi() {
   labels = createLabelLayer();
   inspector = createInspectorCard();
   guides = createGuideLayer();
+  properties = createPropertiesPanel({
+    root,
+    onChange: recordAttributeEdit,
+    onPickImage: pickImage,
+  });
+  structureBar = createStructureBar({ onOp: recordStructuralEdit });
 
   crumbsEl = document.createElement("div");
   crumbsEl.id = `${P}-crumbs`;
@@ -109,6 +129,8 @@ function buildUi() {
   root.append(
     rail.element,
     guides.element,
+    properties.element,
+    structureBar.element,
     labels.element,
     inspector.element,
     crumbsEl,
@@ -127,16 +149,108 @@ async function restorePreferences() {
   // Guides are on unless explicitly turned off.
   const guidesOn = stored[GUIDES_STORAGE_KEY] !== false;
   guides.setEnabled(guidesOn);
-  rail.setToggle("guides", guidesOn);
+  // Reflect the stored state without announcing it — nothing just changed.
+  rail.setToggle("guides", guidesOn, { silent: true });
 }
 
 function setToggleOption(id, on) {
-  if (id !== "guides") return;
-  guides.setEnabled(on);
-  chrome.storage.sync.set({ [GUIDES_STORAGE_KEY]: on });
-  if (on && hoveredEl?.isConnected) {
-    guides.show(hoveredEl, session.has(editKey(hoveredEl)) ? "edited" : "hover");
+  if (id === "guides") {
+    guides.setEnabled(on);
+    chrome.storage.sync.set({ [GUIDES_STORAGE_KEY]: on });
+    if (on && hoveredEl?.isConnected) {
+      guides.show(hoveredEl, session.has(editKey(hoveredEl)) ? "edited" : "hover");
+    }
+    toast.show(
+      on ? "Alignment guides on \u2014 hover any element" : "Alignment guides off",
+      { tone: "info", duration: 1800 }
+    );
+    return;
   }
+
+  if (id === "responsive") {
+    if (on) {
+      showBreakpointPicker();
+      toast.show("Pick a width from the bar below", { tone: "info", duration: 2600 });
+    } else {
+      hideBreakpointPicker();
+    }
+  }
+}
+
+// ============================================================
+//  Responsive preview
+// ============================================================
+let breakpointBar = null;
+
+function showBreakpointPicker() {
+  if (breakpointBar) {
+    breakpointBar.hidden = false;
+    markActiveBreakpoint();
+    return;
+  }
+
+  breakpointBar = document.createElement("div");
+  breakpointBar.id = `${P}-breakpoints`;
+
+  const note = document.createElement("span");
+  note.className = `${P}-breakpoint-note`;
+  note.textContent = "Resizes the window";
+  breakpointBar.appendChild(note);
+
+  for (const bp of BREAKPOINTS) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `${P}-breakpoint`;
+    btn.dataset.id = bp.id;
+    btn.textContent = bp.label;
+    btn.title = `${bp.width} × ${bp.height}${bp.hint ? ` · ${bp.hint}` : ""}`;
+    btn.addEventListener("click", () => applyBreakpoint(bp));
+    breakpointBar.appendChild(btn);
+  }
+
+  const size = document.createElement("span");
+  size.className = `${P}-breakpoint-size`;
+  breakpointBar.appendChild(size);
+
+  root.appendChild(breakpointBar);
+  markActiveBreakpoint();
+
+  window.addEventListener("resize", markActiveBreakpoint);
+}
+
+function hideBreakpointPicker() {
+  if (breakpointBar) breakpointBar.hidden = true;
+}
+
+async function applyBreakpoint(bp) {
+  const { width, height } = windowSizeFor(bp, window);
+  const response = await chrome.runtime.sendMessage({
+    type: "RESIZE_WINDOW",
+    payload: { width, height },
+  });
+
+  if (response?.error) {
+    toast.show(response.error, {
+      tone: response.unsupported ? "warn" : "error",
+      duration: 5000,
+    });
+    return;
+  }
+
+  // The resize is asynchronous; let it settle before reading the result.
+  setTimeout(markActiveBreakpoint, 250);
+}
+
+function markActiveBreakpoint() {
+  if (!breakpointBar) return;
+
+  const current = activeBreakpoint(window.innerWidth);
+  for (const btn of breakpointBar.querySelectorAll(`.${P}-breakpoint`)) {
+    btn.setAttribute("aria-pressed", String(btn.dataset.id === current?.id));
+  }
+
+  const size = breakpointBar.querySelector(`.${P}-breakpoint-size`);
+  if (size) size.textContent = `${window.innerWidth} × ${window.innerHeight}`;
 }
 
 function flipSide() {
@@ -151,13 +265,25 @@ function syncRail() {
   rail.setHistory({ canUndo: session.canUndo(), canRedo: session.canRedo() });
 }
 
-function setRailVisible(visible) {
+/**
+ * @param {boolean} visible
+ * @param {{selectDefault?: boolean}} opts  selectDefault picks Inspect when
+ *        nothing is active — without it the toolbar opens inert: hovering
+ *        highlights nothing and the guides toggle sits lit over a feature
+ *        that cannot fire, which reads as broken.
+ */
+function setRailVisible(visible, { selectDefault = true } = {}) {
   if (!rail) return;
-  if (visible) rail.show();
-  else {
-    rail.hide(); // also deselects the active tool, which tears down decorations
-    teardownInteraction();
+
+  if (visible) {
+    rail.show();
+    if (selectDefault && !activeTool) rail.selectTool(TOOL.INSPECT);
+    return;
   }
+
+  rail.hide(); // also deselects the active tool, which tears down decorations
+  teardownInteraction();
+  hideBreakpointPicker();
 }
 
 // ============================================================
@@ -168,6 +294,8 @@ function selectTool(toolId) {
   activeTool = toolId;
 
   inspector.hide();
+  properties.hide();
+  structureBar.hide();
   labels.hide();
   guides.hide();
   hideCrumbs();
@@ -176,16 +304,18 @@ function selectTool(toolId) {
     if (!wasInteractive) setupInteraction();
     else scanAndDecorate();
 
-    toast.show(
-      toolId === TOOL.EDIT
-        ? "Click any highlighted text to rewrite it"
-        : "Hover to see where text comes from; click for detail",
-      { tone: "info" }
-    );
+    toast.show(TOOL_HINTS[toolId], { tone: "info" });
   } else if (wasInteractive) {
     teardownInteraction();
   }
 }
+
+const TOOL_HINTS = {
+  [TOOL.EDIT]: "Click any highlighted text to rewrite it",
+  [TOOL.INSPECT]: "Hover to see where text comes from; click for detail",
+  [TOOL.PROPERTIES]: "Click an element to edit its links, alt text and classes",
+  [TOOL.STRUCTURE]: "Click an element to move, duplicate or delete it",
+};
 
 function runAction(id) {
   switch (id) {
@@ -245,6 +375,8 @@ function teardownInteraction() {
   labels.hide();
   guides.hide();
   inspector.hide();
+  properties.hide();
+  structureBar.hide();
   hideCrumbs();
 
   autoDetectMode = false;
@@ -312,6 +444,8 @@ function onDomChanged() {
 
 function onViewportChange() {
   const anchor = activeTarget?.isConnected ? activeTarget : hoveredEl;
+  properties.reposition();
+  structureBar.reposition();
   if (anchor?.isConnected) {
     labels.reposition(anchor);
     guides.reposition(anchor);
@@ -410,9 +544,17 @@ function hideCrumbs() {
 //  Click → whatever the active tool does
 // ============================================================
 function onDocumentClick(e) {
+  // Our own UI handles its own clicks. This listener is on the capture
+  // phase, so without this guard it runs *before* a button inside the
+  // properties panel and tears the panel down mid-interaction — which made
+  // click-driven controls silently do nothing while keyboard-driven ones
+  // worked.
+  if (isOwnUi(e.target)) return;
+
   const el = editableFrom(e.target);
   if (!el) {
     inspector.hide();
+    properties.hide();
     return;
   }
   e.preventDefault();
@@ -427,8 +569,126 @@ function activateOn(el) {
     guides.show(el, "selected");
     return;
   }
-  if (activeTool === TOOL.EDIT) beginEdit(el);
+  if (activeTool === TOOL.EDIT) {
+    beginEdit(el);
+    return;
+  }
+
+  if (activeTool === TOOL.PROPERTIES) {
+    properties.show(el);
+    labels.show(el, { state: "selected" });
+    guides.show(el, "selected");
+    hideCrumbs();
+    return;
+  }
+
+  if (activeTool === TOOL.STRUCTURE) {
+    structureBar.show(el);
+    labels.show(el, { state: "selected" });
+    guides.show(el, "selected");
+    hideCrumbs();
+  }
 }
+
+/**
+ * Record a move, duplicate or delete.
+ *
+ * Only annotated elements can be rearranged: there is no text to fall back
+ * on when locating the element in source, so without a build annotation the
+ * service cannot know which element to touch.
+ */
+function recordStructuralEdit(op, el) {
+  if (!el.dataset.editFile) {
+    toast.show(
+      "Rearranging needs a build annotation \u2014 this element has none.",
+      { tone: "warn", duration: 4500 }
+    );
+    return;
+  }
+
+  // One structural op per element. Queueing a delete *and* a duplicate for
+  // the same node asks the service to rewrite overlapping ranges, which it
+  // can only resolve by dropping one — better to refuse here and say so.
+  const key = `${editKey(el)}#op`;
+  const existing = session.get(key);
+
+  if (existing && !isCompatibleOp(existing, op)) {
+    toast.show(
+      `A ${describeOp(existing)} is already queued for this element. Undo it first.`,
+      { tone: "warn", duration: 4500 }
+    );
+    return;
+  }
+
+  // Refuse a move the page cannot make. Without this the UI happily queued
+  // a move for an element that is already first or last, which the service
+  // then rejected — the edit looked accepted and quietly never arrived.
+  if (op === "move-up" && !el.previousElementSibling) {
+    toast.show("This is already the first element here.", { tone: "warn" });
+    return;
+  }
+  if (op === "move-down" && !el.nextElementSibling) {
+    toast.show("This is already the last element here.", { tone: "warn" });
+    return;
+  }
+
+  // Repeated nudges accumulate into one signed offset rather than fighting
+  // over the same key and silently doing nothing.
+  const moveBy =
+    op === "move-up" || op === "move-down"
+      ? (existing?.moveBy || 0) + (op === "move-up" ? -1 : 1)
+      : undefined;
+
+  if (moveBy === 0) {
+    // Nudged back to where it started.
+    session.remove(key);
+    revertEditInDom(el, existing);
+    syncRail();
+    persistSession();
+    toast.show("Back to its original position", { tone: "info" });
+    return;
+  }
+
+  const description = describeElement(el);
+  const normalisedOp = moveBy === undefined ? op : "move";
+
+  session.record({
+    key,
+    pageUrl: window.location.href,
+    framework: el.dataset.editFramework,
+    sourceFile: el.dataset.editFile,
+    sourceLine: parseInt(el.dataset.editLine, 10),
+    sourceColumn: el.dataset.editCol ? parseInt(el.dataset.editCol, 10) : undefined,
+    op: normalisedOp,
+    moveBy,
+    originalText: description,
+    originalRaw: description,
+    newText: moveBy === undefined
+      ? `${normalisedOp} ${description}`
+      : `move ${Math.abs(moveBy)} ${Math.abs(moveBy) === 1 ? "place" : "places"} ${moveBy < 0 ? "up" : "down"}`,
+  });
+
+  // Preview the single step just taken, not the accumulated total.
+  applyStructureOp(el, { op, key });
+
+  syncRail();
+  persistSession();
+  toast.show(`${describeOp(session.get(key))} queued`, { tone: "done" });
+}
+
+/** Moves combine with each other; delete and duplicate stand alone. */
+function isCompatibleOp(existing, op) {
+  const isMove = (o) => o === "move" || o === "move-up" || o === "move-down";
+  return isMove(existing.op) && isMove(op);
+}
+
+function describeOp(edit) {
+  if (!edit) return "change";
+  if (edit.op !== "move") return edit.op;
+  const places = Math.abs(edit.moveBy || 1);
+  return `move ${places} ${places === 1 ? "place" : "places"} ${edit.moveBy < 0 ? "up" : "down"}`;
+}
+
 
 // ============================================================
 //  Editing
@@ -463,7 +723,7 @@ function finishEditing(el) {
 function commitEdit(el, rawText) {
   const newText = rawText.trim();
   const originalRaw = el.innerText;
-  const key = editKey(el);
+  const key = sessionKey(el);
 
   const { changed } = session.record({
     key,
@@ -483,8 +743,8 @@ function commitEdit(el, rawText) {
   if (!changed) return;
 
   const edit = session.get(key);
-  if (edit) renderEdit(el, edit);
-  else restoreOriginal(el, originalRaw);
+  if (edit) applyEditToDom(el, edit);
+  else revertEditInDom(el, { originalRaw });
 
   syncRail();
   persistSession();
@@ -496,19 +756,111 @@ function commitEdit(el, rawText) {
   );
 }
 
-/** Write an edit's text into the page and mark the element. */
-function renderEdit(el, edit) {
+/**
+ * Apply an edit's effect to the page.
+ *
+ * Edits are no longer all text edits, so this dispatches on kind. It used to
+ * assume text unconditionally, which meant undoing an attribute change wrote
+ * the attribute's value into the element and destroyed its children.
+ */
+function applyEditToDom(el, edit) {
   observer?.pause();
-  el.innerText = edit.newText;
+
+  if (edit.op) applyStructureOp(el, edit);
+  else if (edit.attribute) setAttributeValue(el, edit.attribute, edit.newText);
+  else el.innerText = edit.newText;
+
   el.classList.add(CLS.dirty);
   observer?.resume();
 }
 
-function restoreOriginal(el, raw) {
+/** Undo an edit's effect, returning the element to how the page found it. */
+function revertEditInDom(el, edit) {
+  if (!edit) return;
   observer?.pause();
-  if (raw !== undefined) el.innerText = raw;
+
+  if (edit.op) revertStructureOp(el, edit);
+  else if (edit.attribute) setAttributeValue(el, edit.attribute, edit.originalText);
+  else if (edit.originalRaw !== undefined) el.innerText = edit.originalRaw;
+
   el.classList.remove(CLS.dirty);
   observer?.resume();
+}
+
+/**
+ * Write an attribute, preserving our own decoration classes.
+ *
+ * Assigning `class` wholesale would strip the hover and dirty markers along
+ * with it, since those live on the same attribute but belong to us.
+ */
+function setAttributeValue(el, attribute, value) {
+  if (attribute === "class" || attribute === "className") {
+    const ours = [...el.classList].filter((c) => c.startsWith(P));
+    const theirs = String(value).split(/\s+/).filter(Boolean);
+    el.className = [...theirs, ...ours].join(" ");
+    return;
+  }
+  el.setAttribute(attribute, value);
+}
+
+/** Show a structural change in the page so it is not invisible until the PR. */
+function applyStructureOp(el, edit) {
+  if (edit.op === "delete") {
+    el.classList.add(CLS.removed);
+    structureBar.hide();
+    return;
+  }
+
+  if (edit.op === "duplicate") {
+    if (findCopyFor(edit.key)) return; // already previewed
+
+    const copy = el.cloneNode(true);
+    copy.classList.remove(CLS.hovered, CLS.editing, CLS.editable);
+    copy.classList.add(CLS.dirty);
+    // The copy does not exist in source yet, so it must not be treated as an
+    // independently editable element — its annotation would collide with the
+    // original's.
+    delete copy.dataset.editable;
+    delete copy.dataset.editFile;
+    delete copy.dataset.editLine;
+    copy.dataset.ietCopy = edit.key;
+    copy.removeAttribute("id");
+
+    el.insertAdjacentElement("afterend", copy);
+    return;
+  }
+
+  moveElement(el, edit.op);
+}
+
+function revertStructureOp(el, edit) {
+  if (edit.op === "delete") {
+    el.classList.remove(CLS.removed);
+    return;
+  }
+
+  if (edit.op === "duplicate") {
+    findCopyFor(edit.key)?.remove();
+    return;
+  }
+
+  // Undo the whole accumulated distance, not the last nudge.
+  const steps = Math.abs(edit.moveBy ?? 1);
+  const back = (edit.moveBy ?? -1) < 0 ? "move-down" : "move-up";
+  for (let i = 0; i < steps; i++) moveElement(el, back);
+}
+
+function moveElement(el, op) {
+  if (op === "move-up" && el.previousElementSibling) {
+    el.parentElement.insertBefore(el, el.previousElementSibling);
+  } else if (op === "move-down" && el.nextElementSibling) {
+    el.parentElement.insertBefore(el.nextElementSibling, el);
+  }
+  structureBar.reposition();
+}
+
+function findCopyFor(key) {
+  return document.querySelector(`[data-iet-copy="${CSS.escape(key)}"]`);
 }
 
 function cancelActiveEditor() {
@@ -520,12 +872,144 @@ function cancelActiveEditor() {
   el?.classList.remove(CLS.editing);
 }
 
+/**
+ * Session keys.
+ *
+ * One element can carry several independent edits — its text, its alt, its
+ * classes, a structural op — so the kind is part of the key. Without it,
+ * changing a heading's text would overwrite the record of changing its link.
+ */
+function sessionKey(el, attribute) {
+  const base = editKey(el);
+  return attribute ? `${base}#attr:${attribute}` : base;
+}
+
 /** Locate the live element for a key, if it is on this page. */
 function elementForKey(key) {
+  // Keys carry a suffix naming the kind of edit: "#attr:href" or "#op".
+  // Stripping only "#attr:" left structural keys unresolvable, so undoing a
+  // move cleared the record without putting the element back.
+  const base = key.replace(/#(attr:.*|op)$/, "");
   const candidates = editableEls.length
     ? editableEls
     : Array.from(document.querySelectorAll(EDITABLE_SELECTOR));
-  return candidates.find((el) => editKey(el) === key) || null;
+  return candidates.find((el) => editKey(el) === base) || null;
+}
+
+/**
+ * Record a change to an attribute or the class list.
+ *
+ * The element is already updated — the panel applies changes live so the
+ * page shows the result — so this only has to persist the intent.
+ */
+function recordAttributeEdit({ attribute, originalValue, newValue }) {
+  const el = properties.target;
+  if (!el) return;
+
+  const key = sessionKey(el, attribute);
+
+  const { changed } = session.record({
+    key,
+    pageUrl: window.location.href,
+    framework: el.dataset.editFramework,
+    sourceFile: el.dataset.editFile,
+    sourceLine: el.dataset.editLine ? parseInt(el.dataset.editLine, 10) : undefined,
+    attribute,
+    originalText: originalValue,
+    originalRaw: originalValue,
+    newText: newValue,
+  });
+
+  if (!changed) return;
+
+  el.classList.toggle(CLS.dirty, session.count() > 0);
+  syncRail();
+  persistSession();
+
+  const n = session.count();
+  toast.show(`${n} change${n === 1 ? "" : "s"} ready to submit`, { tone: "done" });
+}
+
+/**
+ * Replace an image.
+ *
+ * The file is read here and carried with the edit; the service commits the
+ * bytes alongside the source change so the pull request is self-contained.
+ */
+function pickImage(el) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+
+  input.addEventListener("change", async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast.show(
+        `That image is ${Math.round(file.size / 1024)}kB; the limit is ${MAX_IMAGE_BYTES / 1024}kB.`,
+        { tone: "error", duration: 5000 }
+      );
+      return;
+    }
+
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const originalSrc = el.getAttribute("src") || "";
+    const targetPath = uploadPathFor(originalSrc, file.name);
+
+    // Show the new image straight away; the source still points at the old
+    // path until the pull request lands.
+    el.setAttribute("src", dataUrl);
+
+    session.record({
+      key: sessionKey(el, "src"),
+      pageUrl: window.location.href,
+      framework: el.dataset.editFramework,
+      sourceFile: el.dataset.editFile,
+      sourceLine: el.dataset.editLine ? parseInt(el.dataset.editLine, 10) : undefined,
+      attribute: "src",
+      originalText: originalSrc,
+      originalRaw: originalSrc,
+      newText: targetPath,
+      upload: {
+        path: targetPath.replace(/^\//, ""),
+        dataUrl,
+        name: file.name,
+        size: file.size,
+      },
+    });
+
+    el.classList.add(CLS.dirty);
+    syncRail();
+    persistSession();
+    properties.show(el);
+    toast.show(`Image will be committed to ${targetPath}`, { tone: "done", duration: 4500 });
+  });
+
+  input.click();
+}
+
+/**
+ * Where an uploaded image should live in the repository.
+ *
+ * Next to the image it replaces when that looks like a repo path, so the
+ * new file lands where a developer would have put it themselves.
+ */
+export function uploadPathFor(originalSrc, fileName) {
+  const safeName = fileName.replace(/[^\w.-]+/g, "-").toLowerCase();
+
+  if (originalSrc && originalSrc.startsWith("/") && !originalSrc.startsWith("//")) {
+    const dir = originalSrc.slice(0, originalSrc.lastIndexOf("/"));
+    return `${dir || ""}/${safeName}`;
+  }
+
+  return `/images/${safeName}`;
 }
 
 // ============================================================
@@ -543,8 +1027,8 @@ function applyHistoryStep(step, previous) {
 
   const el = elementForKey(step.key);
   if (el) {
-    if (step.edit) renderEdit(el, step.edit);
-    else restoreOriginal(el, previous?.originalRaw);
+    if (step.edit) applyEditToDom(el, step.edit);
+    else if (previous) revertEditInDom(el, previous);
   }
 
   syncRail();
@@ -662,7 +1146,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     case "SET_EDIT_MODE":
       if (message.enabled) {
-        setRailVisible(true);
+        setRailVisible(true, { selectDefault: false });
         rail.selectTool(TOOL.EDIT);
       } else {
         rail.selectTool(null);
@@ -671,7 +1155,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return false;
 
     case "SET_TOOL":
-      setRailVisible(true);
+      setRailVisible(true, { selectDefault: false });
       rail.selectTool(message.tool ?? null);
       sendResponse(editState());
       return false;
@@ -730,7 +1214,7 @@ async function syncFromStorage() {
   for (const [key, edit] of before) {
     if (session.has(key)) continue;
     const element = elementForKey(key);
-    if (element) restoreOriginal(element, edit.originalRaw);
+    if (element) revertEditInDom(element, edit);
   }
 
   if (INTERACTIVE_TOOLS.has(activeTool)) reapplyPendingEdits();

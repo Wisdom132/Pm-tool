@@ -112,7 +112,7 @@ Unblocks everything else. No behaviour change beyond one bug fix.
 - [x] **4.5** Route i18n edits to locale files — text rendered from `t('hero.title')` must patch
       the JSON, not the component
 
-## Phase 5 — UI (VisBug-style tool rail) ✅
+## Phase 5 — UI and editing tools ✅
 
 Reshaped from the original feature list: the priority became the interface.
 The model is VisBug's — a floating vertical rail of tools, one active at a
@@ -137,28 +137,35 @@ time, deciding what a click on the page does.
       verified by capturing each state
 - [x] **5.9** 33 UI unit tests + 6 tool-model E2E tests
 
-### Done
+### Product boundary
 
-- [x] **5.10** Observer mode — an unannotated page files an issue instead of
-      guessing at source files
-- [x] **5.11** `findTextInRepo` retired. Replaced by `/api/locate`: one code-search
-      call, ranked candidates, confirmed by a human before anything is written.
-      The old path made one API call per source file per edit and committed to
-      whatever a model picked. The Anthropic dependency went with it.
+- [x] **5.10** Observer mode — an unannotated page files an issue rather than guessing
+      at source files
+- [x] **5.11** `findTextInRepo` retired. Replaced by `/api/locate`: one code-search call,
+      ranked candidates, confirmed by a human before anything is written. The old path
+      made one API call per source file per edit and committed to whatever a model
+      picked. The Anthropic dependency went with it.
 - [x] **5.15** Word-level source diff in the review panel
 
-### Parked — each of these is a new tool in the rail
+### Editing tools
 
-Deliberately not started; the rail is ready to host them.
-
-- [x] **5.10** Observer mode — no annotation present → comment and file an issue
-- [x] **5.11** Retire `findTextInRepo` in favour of a confirmable code-search hint
-- [ ] **5.12** Attribute editing — `alt`, `href`, `aria-label`, `title`
-- [ ] **5.13** Tailwind class editing with autocomplete and live preview
-- [ ] **5.14** Image replacement
-- [x] **5.15** Source-diff preview in the review panel
-- [ ] **5.16** Structural ops — delete, duplicate, reorder
-- [ ] **5.17** Responsive breakpoint preview
+- [x] **5.12** Attribute editing — `alt`, `href`, `title`, `aria-label`, `placeholder`,
+      `src`, via a Properties tool. Only attributes already written in the source are
+      offered: the codemod rewrites an existing string literal, and inventing one would
+      be a different change than the editor thinks they are making.
+- [x] **5.13** Class editing with chips and autocomplete. Suggestions come from classes
+      already used on the page — more relevant than a generic utility list, and free in
+      bundle size. Our own `__iet-*` decorations are never written to source.
+- [x] **5.14** Image replacement. The file is read in the browser, carried with the edit,
+      and committed as a binary blob *before* the source change that points at it, so the
+      branch is never briefly broken. Capped at 512kB.
+- [x] **5.16** Structural ops — move up/down, duplicate, delete. Applied as an AST pass of
+      their own so their ranges cannot collide with a text or attribute rewrite inside the
+      element being moved. Requires a build annotation: there is no text to fall back on
+      when locating an element, and deleting the wrong node cannot be undone by retyping.
+- [x] **5.17** Responsive preview. Resizes the browser window rather than scaling the page
+      — media queries answer to the viewport, so a scaled "mobile" preview would still
+      render desktop breakpoints and test nothing.
 
 ## Phase 6 — Ship ✅
 

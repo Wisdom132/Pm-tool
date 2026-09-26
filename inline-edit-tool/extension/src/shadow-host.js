@@ -38,6 +38,14 @@ export function getShadowRoot() {
   // Closed: nothing on the page can reach in via host.shadowRoot.
   root = host.attachShadow({ mode: "closed" });
 
+  // A closed root is also unreachable from a test harness, which left the
+  // whole UI verifiable only by guessing at pixel coordinates. The preview
+  // page opts in explicitly; no real page sets this, so the root stays shut
+  // everywhere it matters.
+  if (window.__IET_ALLOW_TEST_HOOKS__) {
+    window.__IET_TEST__ = { root };
+  }
+
   const style = document.createElement("style");
   style.textContent = uiCss;
   root.appendChild(style);
