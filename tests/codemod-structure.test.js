@@ -227,13 +227,28 @@ describe('html structural edits', () => {
 describe('routing by file type', () => {
   const markup = `<section>\n  <p>One</p>\n  <p>Two</p>\n</section>\n`;
 
-  it.each(['app.html', 'App.vue', 'App.svelte'])('uses the markup backend for %s', (file) => {
+  it.each(['app.html', 'App.svelte'])('uses the markup backend for %s', (file) => {
     // These used to be parsed as JSX, which threw and reported every
     // structural edit as failed.
     const { content, applied, failed } = applyEditsToFile({
       content: markup,
       filePath: file,
       edits: [{ sourceFile: file, sourceLine: 2, op: 'delete' }],
+    });
+    expect(failed).toHaveLength(0);
+    expect(applied).toHaveLength(1);
+    expect(content).not.toContain('One');
+    expect(content).toContain('Two');
+  });
+
+  it('uses the Vue backend for a single-file component', () => {
+    // A .vue file is not bare markup: the scanner must be confined to the
+    // template block so it cannot match inside <script>.
+    const sfc = `<template>\n  <section>\n    <p>One</p>\n    <p>Two</p>\n  </section>\n</template>\n`;
+    const { content, applied, failed } = applyEditsToFile({
+      content: sfc,
+      filePath: 'App.vue',
+      edits: [{ sourceFile: 'App.vue', sourceLine: 3, op: 'delete' }],
     });
     expect(failed).toHaveLength(0);
     expect(applied).toHaveLength(1);

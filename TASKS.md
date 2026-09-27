@@ -177,3 +177,36 @@ time, deciding what a click on the page does.
 - [x] **6.4** Annotation package made publishable — `files`, `exports`, licence,
       keywords, its own README, `npm pack` verified at 9 files / 9.9 kB.
       Publishing itself is yours to run: `npm publish --prefix annotation`
+
+---
+
+## Known gaps
+
+Not defects with a fix pending — deliberate trade-offs or unfinished coverage,
+recorded so they are not rediscovered as surprises.
+
+### Verification
+
+- [ ] No end-to-end coverage for the **side panel**. It needs a real extension
+      context, so it is exercised by hand only.
+- [ ] The **annotation plugins are unit tested against fixtures**, never against
+      a real Vite/webpack build. A plugin that loads but does nothing would pass.
+
+### Cost and weight
+
+- [ ] `@vue/compiler-sfc` is a hard dependency of the service (~3MB) even for a
+      JSX-only project. Now genuinely required — the codemod imports it
+      statically — but it could be split behind a runtime check.
+- [ ] The i18n resolver **reads every candidate locale file on each pull
+      request**. Fine for a handful; wasteful for a per-namespace locale tree.
+- [ ] `/api/locate` resolves line numbers by fetching the top few search hits.
+      One call each, uncached.
+
+### Operational
+
+- [ ] The session store **defaults to process memory**. It warns in production
+      and `docs/DEPLOYMENT.md` explains it, but it is the single most likely
+      cause of a confusing first deployment.
+- [ ] The responsive tool **resizes the user's real browser window**. There is
+      no sandboxed viewport available to an extension without the debugger
+      permission, which is a worse trade.

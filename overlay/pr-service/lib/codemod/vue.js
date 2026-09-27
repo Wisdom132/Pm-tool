@@ -7,13 +7,19 @@
  */
 
 import MagicString from 'magic-string';
+// Static imports: this module is ESM, and the CommonJS require() that used
+// to be here threw "require is not defined" on every call. The failure was
+// swallowed by the dispatcher's fallback, so Vue files were silently patched
+// by blind string replacement — including inside <script>.
+import { parse as parseSfc } from '@vue/compiler-sfc';
+import { parse as parseDom } from '@vue/compiler-dom';
 import { chooseCandidate, describeFailure } from './locate.js';
 
 // Mirrors @vue/compiler-core NodeTypes.
 const ELEMENT = 1;
 const TEXT = 2;
 
-function collectTextNodes(root, offset) {
+function collectTextNodes(root, offset, lineOffset) {
   const found = [];
 
   (function walk(node) {
@@ -31,7 +37,9 @@ function collectTextNodes(root, offset) {
         const first = textChildren[0];
         const last = textChildren[textChildren.length - 1];
         found.push({
-          line: node.loc?.start.line,
+          // Shifted to a file line, so a Vue edit means the same thing as a
+          // React or Angular one.
+          line: (node.loc?.start.line ?? 1) + lineOffset,
           column: node.loc?.start.column,
           text: textChildren.map((c) => c.content).join('').replace(/\s+/g, ' ').trim(),
           node: {
@@ -48,12 +56,14 @@ function collectTextNodes(root, offset) {
   return found;
 }
 
-export function applyVueEdits(source, filePath, edits) {
-  // Lazily required so a deployment that never sees a .vue file does not pay
-  // for the compiler at import time.
-  const { parse: parseSfc } = require('@vue/compiler-sfc');
-  const { parse: parseDom } = require('@vue/compiler-dom');
+/** Number of whole lines before the template block's content begins. */
+function linesBefore(source, offset) {
+  let lines = 0;
+  for (let i = 0; i < offset; i++) if (source[i] === '\n') lines++;
+  return lines;
+}
 
+export function applyVueEdits(source, filePath, edits) {
   const { descriptor, errors } = parseSfc(source, { filename: filePath });
   if (errors?.length) {
     throw new Error(`Could not parse ${filePath}: ${errors[0].message}`);
@@ -65,7 +75,11 @@ export function applyVueEdits(source, filePath, edits) {
   const templateOffset = descriptor.template.loc.start.offset;
   const ast = parseDom(descriptor.template.content, { parseMode: 'base' });
 
-  const candidates = collectTextNodes(ast, templateOffset);
+  const candidates = collectTextNodes(
+    ast,
+    templateOffset,
+    linesBefore(source, templateOffset)
+  );
   const s = new MagicString(source);
 
   const applied = [];
@@ -73,12 +87,7 @@ export function applyVueEdits(source, filePath, edits) {
   const usedRanges = [];
 
   for (const edit of edits) {
-    // Template AST lines are relative to the template block, so shift the
-    // reported line to match before ranking candidates.
-    const chosen = chooseCandidate(candidates, {
-      ...edit,
-      sourceLine: edit.sourceLine,
-    });
+    const chosen = chooseCandidate(candidates, edit);
 
     if (!chosen) {
       failed.push({ edit, reason: describeFailure(candidates, edit) });

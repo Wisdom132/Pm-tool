@@ -14,6 +14,7 @@ import { applyLocaleEdits } from './locale.js';
 import {
   applyStructuralEdits,
   applyHtmlStructuralEdits,
+  applyVueStructuralEdits,
   STRUCTURAL_OPS,
 } from './structure.js';
 import { log } from '../logger.js';
@@ -61,9 +62,11 @@ export function applyEditsToFile({ content, filePath, edits }) {
     // Markup files need the scanner, not the JSX parser — routing a .vue or
     // .html file through Babel produced a parse error and made the Rearrange
     // tool look broken on anything but React.
-    const structuralBackend = /\.(html?|vue|svelte)$/i.test(filePath)
-      ? applyHtmlStructuralEdits
-      : applyStructuralEdits;
+    const structuralBackend = /\.vue$/i.test(filePath)
+      ? applyVueStructuralEdits
+      : /\.(html?|svelte)$/i.test(filePath)
+        ? applyHtmlStructuralEdits
+        : applyStructuralEdits;
 
     try {
       const structuralResult = structuralBackend(result.content, filePath, structural);

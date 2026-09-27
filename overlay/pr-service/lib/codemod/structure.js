@@ -12,6 +12,7 @@
  */
 
 import { parse } from '@babel/parser';
+import { parse as parseSfc } from '@vue/compiler-sfc';
 import MagicString from 'magic-string';
 import {
   findElementRange,
@@ -309,4 +310,60 @@ function withIndentation(source, node) {
   if (source[end] === '\n') end++;
 
   return { start, end };
+}
+
+// ============================================================
+//  Vue single-file components
+// ============================================================
+
+/**
+ * Structural edits inside a Vue SFC's <template> block.
+ *
+ * Routing a .vue file straight at the markup scanner would let it match
+ * inside <script>, where a `<` is just an operator. The template block is
+ * carved out first and the scanner runs on that alone.
+ */
+export function applyVueStructuralEdits(source, filePath, edits) {
+  const { descriptor, errors } = parseSfc(source, { filename: filePath });
+
+  if (errors?.length) throw new Error(`Could not parse ${filePath}: ${errors[0].message}`);
+  if (!descriptor.template) {
+    return {
+      content: source,
+      applied: [],
+      failed: edits.map((edit) => ({ edit, reason: `${filePath} has no <template> block.` })),
+    };
+  }
+
+  const start = findTemplateContentStart(source, descriptor.template.loc.start.offset);
+  const end = descriptor.template.loc.end.offset;
+  const templateSource = source.slice(start, end);
+  const lineOffset = countLines(source.slice(0, start));
+
+  // The scanner works in template coordinates, so shift lines in and out.
+  const shifted = edits.map((edit) => ({
+    ...edit,
+    sourceLine: Number.isFinite(edit.sourceLine) ? edit.sourceLine - lineOffset : edit.sourceLine,
+  }));
+
+  const result = applyHtmlStructuralEdits(templateSource, filePath, shifted);
+
+  return {
+    content: source.slice(0, start) + result.content + source.slice(end),
+    applied: result.applied.map((edit) => ({ ...edit, sourceLine: edit.sourceLine + lineOffset })),
+    failed: result.failed.map((f) => ({
+      ...f,
+      edit: { ...f.edit, sourceLine: f.edit.sourceLine + lineOffset },
+    })),
+  };
+}
+
+/** Offset just past the `>` of the opening <template ...> tag. */
+function findTemplateContentStart(source, blockStart) {
+  const close = source.indexOf('>', blockStart);
+  return close === -1 ? blockStart : close + 1;
+}
+
+function countLines(text) {
+  return (text.match(/\n/g) || []).length;
 }

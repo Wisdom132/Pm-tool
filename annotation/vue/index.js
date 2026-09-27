@@ -44,8 +44,9 @@ const NodeTypes = {
  * @param {string} filePath - absolute file path (for data-edit-file)
  * @param {Array}  mutations - accumulator
  * @param {number} templateContentOffset - offset of template content start in the full file
+ * @param {number} lineOffset - whole lines before the template content, so emitted lines are file lines
  */
-function collectMutations(node, filePath, mutations, templateContentOffset) {
+function collectMutations(node, filePath, mutations, templateContentOffset, lineOffset) {
   if (node.type === NodeTypes.ELEMENT) {
     const tag = node.tag;
     if (HTML_TEXT_ELEMENTS.has(tag)) {
@@ -66,7 +67,10 @@ function collectMutations(node, filePath, mutations, templateContentOffset) {
           // node.loc.start.offset is position of '<' within the template content string
           // We insert right after the tag name: '<tagname' → '<tagname[injection]'
           const insertOffset = templateContentOffset + node.loc.start.offset + 1 + tag.length;
-          const line = node.loc.start.line;
+          // Template AST lines count from the template block, but
+          // data-edit-line has to mean a line in the file — that is what the
+          // React and Angular plugins emit, and what the service reads.
+          const line = node.loc.start.line + lineOffset;
           const col = node.loc.start.column;
           mutations.push({
             offset: insertOffset,
@@ -83,12 +87,12 @@ function collectMutations(node, filePath, mutations, templateContentOffset) {
 
     if (Array.isArray(node.children)) {
       for (const child of node.children) {
-        collectMutations(child, filePath, mutations, templateContentOffset);
+        collectMutations(child, filePath, mutations, templateContentOffset, lineOffset);
       }
     }
   } else if (node.type === NodeTypes.ROOT && Array.isArray(node.children)) {
     for (const child of node.children) {
-      collectMutations(child, filePath, mutations, templateContentOffset);
+      collectMutations(child, filePath, mutations, templateContentOffset, lineOffset);
     }
   }
 }
@@ -167,7 +171,8 @@ module.exports = function inlineEditAnnotationPlugin() {
 
       const relId = path.relative(process.cwd(), id);
       const mutations = [];
-      collectMutations(ast, relId, mutations, templateContentOffset);
+      const lineOffset = (code.slice(0, templateContentOffset).match(/\n/g) || []).length;
+      collectMutations(ast, relId, mutations, templateContentOffset, lineOffset);
 
       if (mutations.length === 0) return null;
 

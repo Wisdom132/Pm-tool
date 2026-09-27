@@ -11,6 +11,7 @@
   "dependencies": {
     "@babel/parser": "^7.29.9",
     "@octokit/rest": "^21.0.0",
+    "@vue/compiler-dom": "^3.5.43",
     "@vue/compiler-sfc": "^3.5.43",
     "jose": "^5.0.0",
     "magic-string": "^1.4.2",
