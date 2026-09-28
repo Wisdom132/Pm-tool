@@ -599,8 +599,14 @@ describe('undo across every kind of edit', () => {
     await undo();
     await page.waitForTimeout(250);
 
+    // The bug this guards: undoing an attribute edit wrote the attribute's
+    // value into the element, turning "Read the docs" into "/docs" and
+    // destroying the <strong>. Assert the structure and the text, not the
+    // exact innerHTML — our own decoration class is expected to be on it,
+    // and is stripped when the toolbar closes.
     expect(await page.locator('#probe strong').count()).toBe(1);
-    expect(await page.locator('#probe').innerHTML()).toBe('Read <strong>the docs</strong>');
+    expect(await page.locator('#probe strong').innerText()).toBe('the docs');
+    expect((await page.locator('#probe').innerText()).trim()).toBe('Read the docs');
   });
 
   it('restores a class list without losing our decorations', async () => {
@@ -817,6 +823,184 @@ describe('review panel', () => {
 // ============================================================
 //  In-browser source editor
 // ============================================================
+// ============================================================
+//  Text with no annotation
+//
+//  Copy held in a data array and rendered through `{{ }}` has
+//  no literal text in the template to annotate. It arrives
+//  unannotated on a page where everything else is traced, and
+//  used to be unreachable — clicking it did nothing at all.
+// ============================================================
+describe('unannotated text on an annotated page', () => {
+  /** The demo page has annotations; this paragraph deliberately has none. */
+  const plain = '#unannotated-copy';
+
+  beforeEach(async () => {
+    // Appending is enough: the MutationObserver rescans, which is the path a
+    // framework re-render takes too.
+    await page.evaluate(() => {
+      const p = document.createElement('p');
+      p.id = 'unannotated-copy';
+      p.textContent = 'Copy from a data array';
+      (document.querySelector('#app') || document.body).appendChild(p);
+    });
+    await page.waitForTimeout(600);
+  });
+
+  it('is editable even though the page is annotated', async () => {
+    await expectClass(plain, '__iet-editable');
+  });
+
+  it('records the edit with no source file', async () => {
+    await editText(plain, 'Copy from somewhere else');
+    await expectText(plain, 'Copy from somewhere else');
+
+    const edits = await storedEdits();
+    const edit = edits.find((e) => e.originalText === 'Copy from a data array');
+    expect(edit).toBeTruthy();
+    expect(edit.sourceFile).toBeUndefined();
+    // A positional key, since there is no source coordinate to use.
+    expect(edit.key.startsWith('dom:')).toBe(true);
+  });
+
+  it('offers Locate for it in the review panel', async () => {
+    // Without this the text can be edited but never committed: the button
+    // that resolves its file was only ever drawn *after* a file was chosen.
+    await editText(plain, 'Copy from somewhere else');
+    await page.evaluate(() => __IET_TEST__.root.querySelector('[data-id="submit"]').click());
+    await page.waitForFunction(() => __IET_TEST__.root.querySelector('#__iet-edits-table'), null, {
+      timeout: 10_000,
+    });
+
+    expect(
+      await page.evaluate(() => __IET_TEST__.root.querySelectorAll('.__iet-locate-btn').length)
+    ).toBe(1);
+  });
+
+  it('keeps showing the resolved path for annotated edits', async () => {
+    await editText(heroSelector, 'Build things that matter');
+    await page.evaluate(() => __IET_TEST__.root.querySelector('[data-id="submit"]').click());
+    await page.waitForFunction(() => __IET_TEST__.root.querySelector('#__iet-edits-table'), null, {
+      timeout: 10_000,
+    });
+
+    const cells = await page.evaluate(() =>
+      [...__IET_TEST__.root.querySelectorAll('#__iet-edits-table tbody tr')].map(
+        (r) => r.cells[0].textContent
+      )
+    );
+    expect(cells).toContain('index.jsx:12');
+  });
+});
+
+// ============================================================
+//  Opening the source of text with no annotation
+//
+//  Alt-click used to fall through to the Inspect card, which
+//  said nothing about why the editor would not open. The text
+//  is searched for instead — and where a search lands in more
+//  than one place, the choice is offered rather than guessed.
+// ============================================================
+describe('alt-clicking text with no annotation', () => {
+  const plain = '#unannotated-copy';
+
+  beforeEach(async () => {
+    await page.evaluate(() => {
+      const p = document.createElement('p');
+      p.id = 'unannotated-copy';
+      p.textContent = 'Build things that mater';
+      (document.querySelector('#app') || document.body).appendChild(p);
+    });
+    await page.waitForTimeout(600);
+  });
+
+  const picker = () => page.evaluate(() => Boolean(__IET_TEST__.root.querySelector('#__iet-picker')));
+
+  it('offers the places the text was found', async () => {
+    await page.click(plain, { modifiers: ['Alt'] });
+    await page.waitForFunction(() => __IET_TEST__.root.querySelector('#__iet-picker'), null, {
+      timeout: 15_000,
+    });
+
+    const paths = await page.evaluate(() =>
+      [...__IET_TEST__.root.querySelectorAll('.__iet-candidate-path')].map((e) => e.textContent)
+    );
+    expect(paths).toEqual(['src/pages/index.jsx:12', 'src/content/copy.js:4']);
+  });
+
+  it('shows the line, so the right one is recognisable', async () => {
+    // Two files can hold the same string; the snippet is what tells them
+    // apart without opening both.
+    await page.click(plain, { modifiers: ['Alt'] });
+    await page.waitForFunction(() => __IET_TEST__.root.querySelector('#__iet-picker'), null, {
+      timeout: 15_000,
+    });
+
+    const snippets = await page.evaluate(() =>
+      [...__IET_TEST__.root.querySelectorAll('.__iet-candidate-snippet')].map((e) => e.textContent)
+    );
+    expect(snippets[0]).toContain('<h1>');
+    expect(snippets[1]).toContain('title:');
+  });
+
+  it('opens the file that was chosen, at its line', async () => {
+    await page.click(plain, { modifiers: ['Alt'] });
+    await page.waitForFunction(() => __IET_TEST__.root.querySelector('#__iet-picker'), null, {
+      timeout: 15_000,
+    });
+
+    await page.evaluate(() => {
+      [...__IET_TEST__.root.querySelectorAll('.__iet-candidate')]
+        .find((c) => c.textContent.includes('copy.js'))
+        .click();
+    });
+    await page.waitForFunction(
+      () => __IET_TEST__.root.querySelector('.__iet-source-editor:not([hidden]) .cm-content'),
+      null,
+      { timeout: 15_000 }
+    );
+
+    const path = await page.evaluate(
+      () => __IET_TEST__.root.querySelector('.__iet-source-tab[aria-selected="true"]').dataset.path
+    );
+    expect(path).toBe('src/content/copy.js');
+    const meta = await page.evaluate(
+      () => __IET_TEST__.root.querySelector('.__iet-source-meta').textContent
+    );
+    expect(meta).toMatch(/^line 4 of/);
+  });
+
+  it('closes without opening anything on cancel', async () => {
+    await page.click(plain, { modifiers: ['Alt'] });
+    await page.waitForFunction(() => __IET_TEST__.root.querySelector('#__iet-picker'), null, {
+      timeout: 15_000,
+    });
+
+    await page.evaluate(() => __IET_TEST__.root.querySelector('.__iet-picker-cancel').click());
+    await page.waitForTimeout(300);
+
+    expect(await picker()).toBe(false);
+    expect(
+      await page.evaluate(() => Boolean(__IET_TEST__.root.querySelector('#__iet-source-panel')))
+    ).toBe(false);
+  });
+
+  it('says so when the text is nowhere in the repository', async () => {
+    await page.evaluate(() => {
+      document.querySelector('#unannotated-copy').textContent = 'zzz nowhere at all';
+    });
+    await page.waitForTimeout(400);
+    await page.click(plain, { modifiers: ['Alt'] });
+    await page.waitForTimeout(1200);
+
+    expect(await picker()).toBe(false);
+    const toast = await page.evaluate(
+      () => __IET_TEST__.root.querySelector('#__iet-toast, .__iet-toast')?.textContent ?? ''
+    );
+    expect(toast).toMatch(/not in this repository/i);
+  });
+});
+
 describe('the source editor', () => {
   // The panel keeps every opened tab mounted, so a bare `.cm-line` would also
   // match the hidden panes. Selectors below are scoped to the visible one.

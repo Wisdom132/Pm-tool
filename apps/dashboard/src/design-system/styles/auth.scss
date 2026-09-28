@@ -1,0 +1,296 @@
+// ═══════════════════════════════════════════════════════════════════════
+//   Auth screen shared styles — one grammar for login, signup, verify-otp,
+//   and forgot-password. Uses DS tokens exclusively (no hard-coded colors
+//   / sizes) so any preset change flows through.
+// ═══════════════════════════════════════════════════════════════════════
+
+.auth-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-s-5);
+}
+
+// Head — eyebrow + title + subtitle
+.auth-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-s-2);
+
+  &__eyebrow {
+    font-size: var(--ds-t-caption);
+    font-weight: 600;
+    color: var(--p-text-muted-color);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: var(--ds-t-display);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    color: var(--p-text-color);
+  }
+
+  p {
+    margin: 0;
+    font-size: var(--ds-t-body);
+    line-height: 1.55;
+    color: var(--p-text-muted-color);
+  }
+}
+
+// Field grouping (label + control + hint/error)
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-s-4);
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-s-2);
+  min-width: 0;
+
+  &__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--ds-s-3);
+  }
+
+  label {
+    font-size: var(--ds-t-small);
+    font-weight: 600;
+    color: var(--p-text-color);
+  }
+
+  input.p-inputtext,
+  input[pInputText],
+  input[type='email'],
+  input[type='password'],
+  input[type='text'],
+  input[type='number'] {
+    width: 100%;
+  }
+
+  .p-password,
+  .p-select {
+    width: 100%;
+  }
+
+  .p-password input.p-inputtext,
+  .p-password .p-inputtext {
+    width: 100%;
+  }
+
+  &__error {
+    display: flex;
+    align-items: center;
+    gap: var(--ds-s-1);
+    font-size: var(--ds-t-caption);
+    font-weight: 600;
+    color: var(--ds-danger-ink);
+
+    i { font-size: 12px; }
+  }
+
+  &__hint {
+    font-size: var(--ds-t-caption);
+    color: var(--p-text-muted-color);
+  }
+
+  &__link {
+    font-size: var(--ds-t-small);
+    font-weight: 600;
+    color: var(--p-primary-color);
+    text-decoration: none;
+
+    &:hover { text-decoration: underline; }
+  }
+}
+
+// Remember-me / terms row (checkbox + label)
+.auth-check {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-s-2);
+  font-size: var(--ds-t-small);
+  color: var(--p-text-color);
+
+  a {
+    color: var(--p-primary-color);
+    text-decoration: none;
+    font-weight: 600;
+
+    &:hover { text-decoration: underline; }
+  }
+}
+
+// Full-width submit button
+.auth-submit {
+  width: 100%;
+
+  .p-button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+// "Already have an account?" / secondary-link footer
+.auth-alt {
+  text-align: center;
+  font-size: var(--ds-t-small);
+  color: var(--p-text-muted-color);
+
+  a {
+    margin-left: var(--ds-s-1);
+    color: var(--p-primary-color);
+    font-weight: 600;
+    text-decoration: none;
+
+    &:hover { text-decoration: underline; }
+  }
+}
+
+// Back link (used on OTP + forgot-password success)
+.auth-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-s-1);
+  align-self: flex-start;
+  font-size: var(--ds-t-small);
+  font-weight: 600;
+  color: var(--p-text-muted-color);
+  text-decoration: none;
+  transition: color 0.15s ease;
+
+  i { font-size: 11px; }
+
+  &:hover { color: var(--p-primary-color); }
+}
+
+// Signup step indicator (linear progress)
+.auth-steps {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-s-3);
+  font-size: var(--ds-t-caption);
+  font-weight: 600;
+  color: var(--p-text-muted-color);
+  font-variant-numeric: tabular-nums;
+
+  &__bar {
+    flex: 1;
+    height: 4px;
+    border-radius: var(--ds-r-pill);
+    background: var(--ds-hairline);
+    overflow: hidden;
+  }
+
+  &__fill {
+    display: block;
+    height: 100%;
+    background: var(--p-primary-color);
+    border-radius: inherit;
+    transition: width var(--ds-trans-smooth);
+  }
+}
+
+// Signup name-row (two fields side by side)
+.auth-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ds-s-3);
+
+  @media (max-width: 480px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+// Verify-OTP: hero icon + status message
+.auth-hero-icon {
+  align-self: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--ds-r-lg);
+  background: var(--ds-info-soft);
+  color: var(--p-primary-color);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+}
+
+.auth-otp {
+  display: flex;
+  justify-content: center;
+  padding: var(--ds-s-2) 0;
+}
+
+.auth-resend {
+  text-align: center;
+  font-size: var(--ds-t-small);
+  color: var(--p-text-muted-color);
+
+  strong {
+    color: var(--p-primary-color);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ds-s-1);
+    padding: var(--ds-s-1) var(--ds-s-2);
+    border: 0;
+    background: transparent;
+    color: var(--p-primary-color);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: var(--ds-r-sm);
+
+    &:hover:not(:disabled) { background: var(--ds-tint); }
+    &:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    i.spin { animation: authSpin 1s linear infinite; }
+  }
+}
+
+// Success-state (forgot-password → email sent)
+.auth-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ds-s-3);
+  text-align: center;
+  padding: var(--ds-s-4) 0;
+
+  .auth-hero-icon {
+    background: var(--ds-success-soft);
+    color: var(--ds-success-ink);
+  }
+
+  h2 {
+    margin: 0;
+    font-size: var(--ds-t-heading);
+    font-weight: 700;
+    color: var(--p-text-color);
+  }
+
+  p {
+    margin: 0;
+    font-size: var(--ds-t-body);
+    color: var(--p-text-muted-color);
+    max-width: 320px;
+    line-height: 1.55;
+
+    strong { color: var(--p-text-color); font-weight: 600; }
+  }
+}
+
+@keyframes authSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

@@ -659,6 +659,92 @@
   white-space: normal;
 }
 
+/* Source picker: choosing where unannotated text lives. */
+#__iet-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: grid;
+  place-items: center;
+  background: rgba(9, 9, 11, 0.45);
+}
+
+#__iet-picker {
+  width: min(560px, 92vw);
+  max-height: 70vh;
+  overflow: auto;
+  padding: 20px 22px;
+  border-radius: 14px;
+  background: var(--iet-surface-solid);
+  border: 1px solid var(--iet-line);
+  box-shadow: var(--iet-shadow);
+  color: var(--iet-text);
+}
+
+.__iet-picker-title {
+  display: block;
+  font-size: 14px;
+}
+
+.__iet-picker-note {
+  margin: 6px 0 14px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--iet-muted);
+}
+
+/* The list is shared with the review panel, which is a light surface. In the
+   picker it sits on the dark card and has to be restyled, not merely reused. */
+#__iet-picker .__iet-candidates {
+  max-width: none;
+  gap: 6px;
+}
+
+#__iet-picker .__iet-candidate {
+  padding: 9px 11px;
+  border-color: var(--iet-line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--iet-text);
+  font-size: 12px;
+}
+
+#__iet-picker .__iet-candidate:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: var(--iet-accent);
+}
+
+#__iet-picker .__iet-candidate-path {
+  color: var(--iet-accent);
+  font-weight: 600;
+}
+
+.__iet-candidate-snippet {
+  display: block;
+  margin-top: 4px;
+  font: 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--iet-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.__iet-picker-cancel {
+  margin-top: 14px;
+  padding: 6px 14px;
+  border: 1px solid var(--iet-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--iet-muted);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.__iet-picker-cancel:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--iet-text);
+}
+
 .__iet-candidates {
   display: flex;
   flex-direction: column;

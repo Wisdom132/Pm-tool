@@ -61,6 +61,77 @@ function readProjectFile(root, requested) {
  * @param {boolean} [options.autoOpen]  open the toolbar on load; set false to
  *                                      summon it with the shortcut instead
  */
+/** Directories never worth searching. */
+const SKIP_DIRS = new Set([
+  'node_modules', '.git', '.nuxt', '.output', 'dist', 'build', '.next',
+  'coverage', '.cache', '.vercel',
+]);
+
+const SEARCHABLE = /\.(vue|jsx?|tsx?|svelte|html?|astro|mdx?|json)$/i;
+
+/**
+ * Where a piece of text appears in the working tree.
+ *
+ * Deliberately a literal search, not a fuzzy one: a near match offered as a
+ * candidate invites someone to confirm the wrong file, and the whole point
+ * of the confirmation step is that nothing is written on a guess.
+ *
+ * @returns {{candidates: Array<{sourceFile, sourceLine, snippet}>, reason: string|null}}
+ */
+function locateText(root, text) {
+  const needle = String(text).trim();
+  if (needle.length < 3) {
+    return { candidates: [], reason: 'Too short to search for' };
+  }
+
+  const candidates = [];
+
+  (function walk(dir) {
+    if (candidates.length >= 8) return;
+
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (candidates.length >= 8) return;
+
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith('.')) walk(full);
+        continue;
+      }
+      if (!SEARCHABLE.test(entry.name)) continue;
+
+      let contents;
+      try {
+        contents = fs.readFileSync(full, 'utf8');
+      } catch {
+        continue;
+      }
+      if (!contents.includes(needle)) continue;
+
+      const lines = contents.split('\n');
+      for (let i = 0; i < lines.length && candidates.length < 8; i++) {
+        if (!lines[i].includes(needle)) continue;
+        candidates.push({
+          sourceFile: path.relative(root, full),
+          sourceLine: i + 1,
+          snippet: lines[i].trim().slice(0, 140),
+        });
+      }
+    }
+  })(root);
+
+  return {
+    candidates,
+    reason: candidates.length ? null : `"${needle}" is not in the working tree`,
+  };
+}
+
 module.exports = function inlineEditPreview({
   root = process.cwd(),
   extensionDist = BUNDLED_DIST,
@@ -104,6 +175,16 @@ module.exports = function inlineEditPreview({
 
         // The real service reads from GitHub; here the working tree is the
         // branch, which is the point — you edit the file you are looking at.
+        // The service resolves unannotated text with GitHub code search.
+        // Here the working tree is searched directly, which is faster and
+        // means the Locate flow works without the service running.
+        if (url === '/__iet/locate') {
+          const text = new URLSearchParams(query || '').get('text') || '';
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(locateText(root, text)));
+          return;
+        }
+
         if (url === '/__iet/file') {
           const wanted = new URLSearchParams(query || '').get('path') || '';
           const content = readProjectFile(root, wanted);
@@ -214,6 +295,16 @@ function shimSource({ repo, branch, autoOpen }) {
       if (path.startsWith("/api/preview-status")) return { data: { status: "current", usable: true } };
 
       return { error: "example shim: unhandled path " + path };
+    }
+
+    if (type === "API_POST") {
+      if (payload.path.startsWith("/api/locate")) {
+        const response = await fetch(
+          "/__iet/locate?text=" + encodeURIComponent(payload.body?.text || "")
+        );
+        return { data: await response.json() };
+      }
+      return { error: "example shim: unhandled post " + payload.path };
     }
 
     if (type === "LOAD_CODE_EDITOR") {

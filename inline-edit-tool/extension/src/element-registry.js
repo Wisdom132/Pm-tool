@@ -68,24 +68,45 @@ export function editKey(el) {
 /**
  * Find every element that should be editable.
  *
+ * Annotated elements and detected ones, together — not one or the other.
+ *
+ * A page is rarely all or nothing. Copy held in a data array and rendered
+ * through an interpolation has no literal text in the template to annotate,
+ * so it arrives unannotated on a page where everything else is traced. This
+ * used to make it unreachable: the annotated branch won, and clicking the
+ * text did nothing at all. It is now editable, and its source is resolved by
+ * the Locate flow at review time instead of by an annotation.
+ *
+ * `autoDetected` still means what it did — that *nothing* here is annotated,
+ * which is what puts the whole session into observer mode.
+ *
  * @param {Document|Element} root
  * @param {(el: Element) => boolean} isExcluded  skip our own UI
- * @returns {{elements: Element[], autoDetected: boolean}}
+ * @returns {{elements: Element[], detected: Element[], autoDetected: boolean}}
  */
 export function findEditableElements(root, isExcluded = () => false) {
-  const annotated = Array.from(root.querySelectorAll(EDITABLE_SELECTOR)).filter(
-    (el) => !isExcluded(el)
-  );
+  // Elements marked by a previous scan carry data-editable too; excluding
+  // them here keeps them from being counted as annotated on the next pass.
+  const annotated = Array.from(
+    root.querySelectorAll(`${EDITABLE_SELECTOR}:not([data-auto-detected])`)
+  ).filter((el) => !isExcluded(el));
 
-  if (annotated.length > 0) {
-    return { elements: annotated, autoDetected: false };
-  }
-
+  const seen = new Set(annotated);
   const detected = Array.from(root.querySelectorAll(TEXT_SELECTOR)).filter(
-    (el) => !isExcluded(el) && hasDirectText(el)
+    (el) =>
+      !seen.has(el) &&
+      !isExcluded(el) &&
+      hasDirectText(el) &&
+      // A duplicate this tool previewed is not page content to edit; it is
+      // the pending edit's own preview, and it disappears on undo.
+      !el.closest("[data-iet-copy]")
   );
 
-  return { elements: detected, autoDetected: true };
+  return {
+    elements: [...annotated, ...detected],
+    detected,
+    autoDetected: annotated.length === 0,
+  };
 }
 
 /**

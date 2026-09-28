@@ -27,3 +27,8 @@ npm-debug.log*
 # Uncomment if you don't want to commit lock files:
 # package-lock.json
 # yarn.lock
+
+# Platform apps (.env is already covered above)
+apps/api/generated/
+apps/*/.next/
+apps/*/dist/

@@ -1,0 +1,10 @@
+/* Design tokens and reset. Before PrimeNG, so the library's layer sits
+   underneath and our rules win without !important. */
+@use './design-system/styles/tokens.css';
+@use './design-system/styles/auth.scss';
+
+@import 'primeicons/primeicons.css';
+
+/* Gilroy is licensed and not in this repository; Inter stands in until the
+   font files are added, at which point the browser resolves Gilroy first. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');

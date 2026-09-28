@@ -109,11 +109,7 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
       if (edit.pageUrl !== currentUrl) cell.style.color = "#6b7280";
     }
 
-    const fname = edit.sourceFile ? edit.sourceFile.split("/").pop() : null;
-    const lineN = edit.sourceLine ? `:${edit.sourceLine}` : "";
     const fileCell = row.insertCell();
-    fileCell.textContent = fname ? `${fname}${lineN}` : "—";
-    if (!fname) fileCell.style.color = "#d1d5db";
 
     // A file edited in the source panel replaces the whole file, so there is
     // no before/after phrase to mark up — the shape of the change is the
@@ -128,6 +124,12 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
       cell.append(...describeLineChange(edit.linesChanged));
       continue;
     }
+
+    // A resolved path, or a Locate button. This used to be written inline
+    // here, which meant renderFileCell only ever ran *after* a candidate was
+    // chosen — so the button that starts the search was never drawn, and
+    // text with no annotation could be edited but never committed.
+    renderFileCell(fileCell, edit);
 
     // Mark the words that actually changed, rather than leaving the reader
     // to compare two full sentences.

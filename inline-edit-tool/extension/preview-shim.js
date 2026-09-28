@@ -111,6 +111,16 @@
           "}",
           "",
     ].join("\n"),
+    "src/content/copy.js": [
+          "export const copy = {",
+          "  hero: {",
+          "    // Mirrors the heading, so a text search finds two plausible homes.",
+          "    title: \"Build things that mater\",",
+          "    subtitle: \"The fastest way to ship high-quality products.\",",
+          "  },",
+          "};",
+          "",
+    ].join("\n"),
     "src/components/Banner.vue": [
           "<template>",
           "  <section class=\"banner\">",
@@ -236,6 +246,8 @@
   const listeners = [];
   const contentHandlers = [];
 
+  const path_of = (payload) => payload?.path || "";
+
   async function handleMessage(message) {
     const { type, payload } = message;
 
@@ -277,6 +289,27 @@
       }
 
       return { error: `preview shim: unhandled path ${path}` };
+    }
+
+    if (type === "API_POST") {
+      if (path_of(payload).startsWith("/api/locate")) {
+        // Two hits, so the demo exercises the picker rather than the
+        // single-match shortcut.
+        const text = payload.body?.text || "";
+        if (!SOURCE_FILES["src/pages/index.jsx"].includes(text.split(" ")[0])) {
+          return { data: { candidates: [], reason: `"${text}" is not in this repository` } };
+        }
+        return {
+          data: {
+            candidates: [
+              { sourceFile: "src/pages/index.jsx", sourceLine: 12, snippet: `<h1>${text}</h1>` },
+              { sourceFile: "src/content/copy.js", sourceLine: 4, snippet: `title: "${text}",` },
+            ],
+            reason: null,
+          },
+        };
+      }
+      return { error: `preview shim: unhandled post ${path_of(payload)}` };
     }
 
     if (type === "LOAD_CODE_EDITOR") {

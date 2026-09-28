@@ -41,6 +41,9 @@ export function sourceRefFor(el) {
  * @param {ShadowRoot} opts.root
  * @param {Element}    opts.element   the element that was clicked
  * @param {object}     opts.ctx       page context (repo / branch)
+ * @param {object}     [opts.ref]     {sourceFile, sourceLine} when the file
+ *                                    was resolved by search rather than by
+ *                                    an annotation
  * @param {Function}   opts.onStage   called with an array of changed files
  * @param {Function}   opts.onPreview (path, change) as a file changes
  * @param {Function}   opts.onRevert  undo whatever onPreview applied
@@ -50,12 +53,15 @@ export async function openSourcePanel({
   root,
   element,
   ctx,
+  ref: refOverride,
   onStage,
   onPreview,
   onRevert,
   onClose,
 }) {
-  const ref = sourceRefFor(element);
+  // An override comes from the Locate flow: text the build did not annotate,
+  // whose file was found by searching the repository instead.
+  const ref = refOverride || sourceRefFor(element);
   if (!ref) return null;
 
   // ── Shell ────────────────────────────────────────────────

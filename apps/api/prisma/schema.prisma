@@ -1,0 +1,275 @@
+// ============================================================
+//  Tenants, sites and provider connections
+//
+//  Every model except Organisation carries organisationId, and
+//  every query is expected to filter on it. Getting that wrong
+//  once shows one customer another customer's source code, so
+//  it is a column on the row rather than a join away.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---- Tenants ------------------------------------------------
+
+model Organisation {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  /// Set rather than deleted. A deletion has to reach several stores,
+  /// and a row that is gone cannot be used to find what is left.
+  deletedAt DateTime?
+
+  memberships Memberships[]
+  invitations Invitation[]
+  connections Connection[]
+  sites       Site[]
+  environments SiteEnvironment[]
+  teams       Team[]
+  auditEvents AuditEvent[]
+
+  @@map("organisation")
+}
+
+model User {
+  id         String    @id @default(uuid()) @db.Uuid
+  /// Identity is an email, not a GitHub account: the editors this is for
+  /// are writers and product managers who may have neither.
+  email      String    @unique
+  name       String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime?
+
+  memberships    Memberships[]
+  teamMemberships TeamMember[]
+  createdConnections Connection[] @relation("ConnectionCreatedBy")
+  auditEvents    AuditEvent[]
+
+  @@map("app_user")
+}
+
+enum Role {
+  /// Connects providers, registers sites, invites people.
+  admin
+
+  /// Opens pull requests and leaves feedback. Deliberately cannot
+  /// re-point a site at a different repository.
+  editor
+}
+
+/// A person can belong to more than one organisation: agencies edit
+/// several clients' sites, and a contractor is in the same position.
+model Memberships {
+  organisationId String   @db.Uuid
+  userId         String   @db.Uuid
+  role           Role
+  createdAt      DateTime @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([organisationId, userId])
+  @@map("membership")
+}
+
+model Invitation {
+  id             String    @id @default(uuid()) @db.Uuid
+  organisationId String    @db.Uuid
+  email          String
+  role           Role
+  /// The token itself is emailed and never stored; this is its hash, so a
+  /// leaked database does not hand out memberships.
+  tokenHash      String    @unique
+  /// Which teams they join on accepting. Empty means the default team only.
+  teamIds        String[]  @db.Uuid
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
+  @@map("invitation")
+}
+
+// ---- Provider connections -----------------------------------
+
+enum Provider {
+  github
+  gitlab
+  bitbucket
+}
+
+/// One per organisation per provider account. Holds credentials for
+/// somebody else's repositories, which is why nothing here is stored in
+/// the clear and why every use is written to AuditEvent.
+model Connection {
+  id             String   @id @default(uuid()) @db.Uuid
+  organisationId String   @db.Uuid
+  provider       Provider
+
+  /// The org / group / workspace on the provider's side, for display.
+  accountLogin   String
+  /// GitHub App installation id, GitLab group id, and so on.
+  externalId     String
+  /// Set for self-hosted GitLab and GitHub Enterprise; null for the public
+  /// host. Designed in now because retrofitting it is painful.
+  baseUrl        String?
+
+  /// Ciphertext. The application encrypts before writing.
+  credentials    Bytes?
+  /// Which key encrypted it, so keys rotate without one migration having
+  /// to decrypt everything at once.
+  keyVersion     Int      @default(1)
+
+  createdById    String?  @db.Uuid
+  createdAt      DateTime @default(now())
+  revokedAt      DateTime?
+
+  organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  createdBy    User?             @relation("ConnectionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  environments SiteEnvironment[]
+
+  @@unique([organisationId, provider, externalId])
+  @@map("connection")
+}
+
+// ---- Sites --------------------------------------------------
+
+/// What the extension asks about: "this page is on staging.acme.com —
+/// which repository and branch am I editing?"
+model Site {
+  id                String    @id @default(uuid()) @db.Uuid
+  organisationId    String    @db.Uuid
+  name              String
+
+  /// Ownership is verified before a site goes live. Without it anyone
+  /// could claim a hostname and collect feedback meant for its owner.
+  verifiedAt        DateTime?
+  verificationToken String
+
+  createdAt         DateTime  @default(now())
+  deletedAt         DateTime?
+
+  organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  environments SiteEnvironment[]
+  teams        TeamSite[]
+
+  @@index([organisationId])
+  @@map("site")
+}
+
+/// A site has several of these — production, staging, and a wildcard for
+/// preview deploys. Separate rows because each points at its own branch.
+model SiteEnvironment {
+  id             String   @id @default(uuid()) @db.Uuid
+  siteId         String   @db.Uuid
+  organisationId String   @db.Uuid
+  connectionId   String   @db.Uuid
+
+  /// "acme.com", "staging.acme.com", "*.acme.vercel.app".
+  /// One wildcard label, at the front.
+  hostname       String
+  /// production / staging / preview — a label, not behaviour.
+  label          String
+  /// "owner/name"
+  repository     String
+
+  /// Null means "take it from the page", which is what preview deploys
+  /// need: the branch is in the URL or stamped on the build, and differs
+  /// per deployment.
+  branch         String?
+
+  createdAt      DateTime @default(now())
+
+  site         Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  /// Restrict, not cascade: disconnecting a provider that sites still
+  /// depend on should fail loudly rather than silently orphan them.
+  connection   Connection   @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+
+  @@unique([organisationId, hostname])
+  @@index([hostname])
+  @@map("site_environment")
+}
+
+// ---- Teams --------------------------------------------------
+
+/// A named group of people with access to a set of sites.
+///
+/// The organisation role says what someone may *do* — an editor opens pull
+/// requests, an admin also connects providers. A team says what they may do
+/// it *to*. An agency's designers should not be able to edit the client site
+/// they are not working on, and role alone cannot express that.
+///
+/// Every organisation gets an "Everyone" team covering all its sites. Without
+/// a default, inviting someone would appear to work and then show them an
+/// empty dashboard, which reads as a broken invitation rather than as missing
+/// permissions.
+model Team {
+  id             String   @id @default(uuid()) @db.Uuid
+  organisationId String   @db.Uuid
+  name           String
+  /// The organisation's default. Cannot be deleted, and new members join it.
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  members      TeamMember[]
+  sites        TeamSite[]
+
+  @@unique([organisationId, name])
+  @@map("team")
+}
+
+model TeamMember {
+  teamId    String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+  @@map("team_member")
+}
+
+/// Which sites a team can edit.
+model TeamSite {
+  teamId String @db.Uuid
+  siteId String @db.Uuid
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, siteId])
+  @@map("team_site")
+}
+
+// ---- Audit --------------------------------------------------
+
+/// Cheap to write now, very expensive to reconstruct later.
+model AuditEvent {
+  id             BigInt   @id @default(autoincrement())
+  organisationId String   @db.Uuid
+  actorUserId    String?  @db.Uuid
+  /// connection.created, site.registered, branch.changed, pr.opened…
+  action         String
+  subject        String?
+  detail         Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organisationId, createdAt(sort: Desc)])
+  @@map("audit_event")
+}

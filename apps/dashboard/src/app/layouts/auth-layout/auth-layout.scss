@@ -1,0 +1,71 @@
+// Auth pages — single centered card on the DS app surface.
+// Full-viewport, scrolls if the form grows taller than the screen.
+
+.auth-page {
+  min-height: 100vh;
+  width: 100%;
+  padding: clamp(1rem, 3vw, 2rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ds-app-bg);
+  color: var(--p-text-color);
+  font-family: var(--ds-font);
+}
+
+.auth-shell {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--ds-s-6);
+}
+
+.auth-brand {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-s-2);
+  color: var(--p-text-color);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: var(--ds-t-title);
+  letter-spacing: -0.01em;
+
+  &__mark {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--ds-r-sm);
+    background: var(--p-primary-color);
+    color: var(--p-primary-contrast-color);
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    font-size: var(--ds-t-body);
+  }
+
+  &:hover { text-decoration: none; }
+}
+
+.auth-card {
+  padding: clamp(1.75rem, 4vw, 2.5rem);
+}
+
+.auth-foot {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-s-3);
+  font-size: var(--ds-t-caption);
+  color: var(--p-text-muted-color);
+
+  a {
+    color: inherit;
+    text-decoration: none;
+
+    &:hover { color: var(--p-primary-color); }
+  }
+
+  &__dot { opacity: 0.5; }
+}

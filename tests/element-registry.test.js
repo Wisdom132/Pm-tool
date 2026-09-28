@@ -95,11 +95,32 @@ describe('editKey', () => {
 });
 
 describe('findEditableElements', () => {
-  it('prefers annotated elements', () => {
-    mount('<h1 data-editable="true">A</h1><p>not annotated</p>');
-    const { elements, autoDetected } = findEditableElements(document);
-    expect(elements).toHaveLength(1);
+  it('includes unannotated text alongside annotated elements', () => {
+    // Copy held in a data array and rendered through an interpolation has no
+    // literal text in the template to annotate, so it arrives unannotated on
+    // a page where everything else is traced. Preferring the annotated ones
+    // made it unreachable — clicking it did nothing at all.
+    mount('<h1 data-editable="true">A</h1><p>from a data array</p>');
+    const { elements, detected, autoDetected } = findEditableElements(document);
+
+    expect(elements).toHaveLength(2);
+    expect(detected).toHaveLength(1);
+    expect(detected[0].textContent).toBe('from a data array');
+    // Still false: the page does carry annotations, so this is not a page
+    // with no build integration at all.
     expect(autoDetected).toBe(false);
+  });
+
+  it('reports auto-detection only when nothing is annotated', () => {
+    mount('<h1>A</h1><p>B</p>');
+    expect(findEditableElements(document).autoDetected).toBe(true);
+  });
+
+  it('does not count a previous scan\'s marks as annotations', () => {
+    // scanAndDecorate stamps data-editable on detected elements; on the next
+    // pass they would otherwise look annotated and suppress detection.
+    mount('<p data-editable="true" data-auto-detected="true">B</p>');
+    expect(findEditableElements(document).autoDetected).toBe(true);
   });
 
   it('falls back to auto-detection', () => {

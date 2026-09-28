@@ -13,6 +13,8 @@
 // ============================================================
 
 import { resolvePageContext } from "./page-context.js";
+import { resolveServiceUrl } from "./config.js";
+import { getSessionId } from "./auth-storage.js";
 import { getShadowRoot, isOwnUi } from "./shadow-host.js";
 import { createEditSession } from "./edit-session.js";
 import { openEditorOverlay } from "./editor-overlay.js";
@@ -23,6 +25,7 @@ import { createGuideLayer } from "./ui/guides.js";
 import { createPropertiesPanel } from "./ui/properties.js";
 import { createStructureBar } from "./ui/structure-bar.js";
 import { openSourcePanel, sourceRefFor } from "./ui/source-panel.js";
+import { openSourcePicker } from "./ui/source-picker.js";
 import { BREAKPOINTS, activeBreakpoint, windowSizeFor } from "./ui/viewport.js";
 import {
   EDITABLE_SELECTOR,
@@ -389,17 +392,15 @@ function teardownInteraction() {
 
 /** Find editable elements, decorate them, and re-apply pending edits. */
 function scanAndDecorate() {
-  const { elements, autoDetected } = findEditableElements(document, isOwnUi);
+  const { elements, detected, autoDetected } = findEditableElements(document, isOwnUi);
   editableEls = elements;
   autoDetectMode = autoDetected;
 
-  if (autoDetected) {
-    elements.forEach((el) => {
-      el.dataset.editable = "true";
-      el.dataset.autoDetected = "true";
-      el.dataset.editFramework = "auto";
-    });
-  }
+  // Detected elements are *not* stamped with data attributes. What makes an
+  // element interactive is the class below, and writing data-editable onto
+  // every text node's parent would mutate the host page's markup on every
+  // annotated page — visible in the DOM, and in anyone's innerHTML.
+  void detected;
 
   for (const el of elements) el.classList.add(CLS.editable);
 
@@ -561,11 +562,22 @@ function onDocumentClick(e) {
   // Alt-click opens the source, whatever tool happens to be active: the
   // gesture is the mode, so a developer never has to go and select one.
   if (e.altKey) {
-    const target = e.target?.closest?.("[data-edit-file]");
-    if (target) {
+    const annotated = e.target?.closest?.("[data-edit-file]");
+    if (annotated) {
       e.preventDefault();
       e.stopPropagation();
-      showSourcePanel(target);
+      showSourcePanel(annotated);
+      return;
+    }
+
+    // No annotation anywhere above it. Copy rendered from a data array has
+    // none, and falling through to the Inspect card said nothing about why
+    // the editor would not open. Ask the service where the text lives.
+    const detected = editableFrom(e.target);
+    if (detected) {
+      e.preventDefault();
+      e.stopPropagation();
+      locateThenOpenSource(detected);
       return;
     }
   }
@@ -988,9 +1000,11 @@ function elementForKey(key) {
   // Stripping only "#attr:" left structural keys unresolvable, so undoing a
   // move cleared the record without putting the element back.
   const base = key.replace(/#(attr:.*|op|run:\d+)$/, "");
+  // The class is what marks an element editable; the data attribute only
+  // exists on elements the build annotated.
   const candidates = editableEls.length
     ? editableEls
-    : Array.from(document.querySelectorAll(EDITABLE_SELECTOR));
+    : Array.from(document.querySelectorAll(`.${CLS.editable}`));
   return candidates.find((el) => editKey(el) === base) || null;
 }
 
@@ -1213,10 +1227,84 @@ function onKeydown(e) {
  * Available on any annotated element, not only editable ones — a developer
  * may well want the source of something a writer can never touch.
  */
-async function showSourcePanel(el) {
+/**
+ * Open the source of text the build did not annotate.
+ *
+ * There is no file on the element to open, so the repository is searched for
+ * the text. A single match opens straight away; several are offered, because
+ * a text search can land in more than one place and opening the wrong file
+ * is worse than asking.
+ */
+async function locateThenOpenSource(el) {
+  const text = el.textContent.trim().replace(/\s+/g, " ");
+  if (!text) return;
+
+  const ctx = resolvePageContext({
+    dataset: document.documentElement.dataset,
+    hostname: window.location.hostname,
+  });
+
+  if (!ctx.repo || !ctx.branch) {
+    toast.show(
+      "This element has no build annotation, and the page does not say which repository it came from.",
+      { tone: "warn", duration: 5000 }
+    );
+    return;
+  }
+
+  toast.show("No annotation here \u2014 searching the repository\u2026", {
+    tone: "info",
+    duration: 2500,
+  });
+
+  const stored = await chrome.storage.sync.get(["prServiceUrl"]);
+  const response = await chrome.runtime.sendMessage({
+    type: "API_POST",
+    payload: {
+      path: "/api/locate",
+      token: (await getSessionId()) || "",
+      serviceUrl: resolveServiceUrl(stored.prServiceUrl),
+      body: { repo: ctx.repo, branch: ctx.branch, text },
+    },
+  });
+
+  const candidates = response?.data?.candidates || [];
+
+  if (candidates.length === 0) {
+    toast.show(
+      response?.data?.reason || response?.error || "That text is not in the repository.",
+      { tone: "warn", duration: 5000 }
+    );
+    return;
+  }
+
+  // One match is unambiguous. Several are not: the same string often appears
+  // in three page components, and opening the first would be a guess — which
+  // is the thing the confirmation step exists to avoid.
+  if (candidates.length > 1) {
+    openSourcePicker({
+      root,
+      element: el,
+      candidates,
+      onPick: (candidate) =>
+        showSourcePanel(el, {
+          sourceFile: candidate.sourceFile,
+          sourceLine: candidate.sourceLine,
+        }),
+    });
+    return;
+  }
+
+  showSourcePanel(el, {
+    sourceFile: candidates[0].sourceFile,
+    sourceLine: candidates[0].sourceLine,
+  });
+}
+
+async function showSourcePanel(el, ref) {
   if (sourcePanel) return;
 
-  if (!sourceRefFor(el)) {
+  if (!ref && !sourceRefFor(el)) {
     toast.show("This element has no build annotation, so there is no file to open.", {
       tone: "warn",
       duration: 4500,
@@ -1232,6 +1320,7 @@ async function showSourcePanel(el) {
   sourcePanel = await openSourcePanel({
     root,
     element: el,
+    ref,
     ctx: resolvePageContext({
       dataset: document.documentElement.dataset,
       hostname: window.location.hostname,
