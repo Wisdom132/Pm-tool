@@ -69,3 +69,67 @@ describe('templateContentOffset', () => {
     expect(templateContentOffset(code, 0)).toBe(code.indexOf('>') + 1);
   });
 });
+
+// ============================================================
+//  What gets annotated
+//
+//  The rule is the codemod's rule: an element whose meaningful
+//  children are all text. A tag allowlist got this wrong both
+//  ways — it missed every <div> holding copy, which on a
+//  utility-class codebase is most of the page, and it annotated
+//  mixed content the codemod then refused to commit.
+// ============================================================
+describe('which elements the Vue plugin annotates', () => {
+  const transform = (template) => {
+    process.env.INLINE_EDIT = '1';
+    const plugin = vuePlugin();
+    plugin.configResolved({ command: 'build', mode: 'production' });
+    const out = plugin.transform(`<template>\n${template}\n</template>`, '/tmp/X.vue');
+    return out ? out.code : `<template>\n${template}\n</template>`;
+  };
+
+  /** Tags carrying an annotation, in document order. */
+  const annotated = (code) =>
+    [...code.matchAll(/<(\w+)[^>]*data-edit-file/g)].map((m) => m[1]);
+
+  it('annotates a div that holds only text', () => {
+    // The case that matters on a Tailwind codebase: headings and copy are
+    // divs, and none of them used to be reachable.
+    expect(annotated(transform('  <div class="card-title">Freshly Cooked Meals</div>'))).toEqual([
+      'div',
+    ]);
+  });
+
+  it('annotates an element that also holds another element', () => {
+    // Its runs of text are editable individually — the codemod rewrites the
+    // run, not the element, so the span survives.
+    const code = transform('  <div>Focus on things you <span>love</span> now</div>');
+    expect(annotated(code)).toEqual(['div', 'span']);
+  });
+
+  it('annotates literal text sitting beside an interpolation', () => {
+    // " orders" is real copy in the template; `{{ count }}` is not touched.
+    expect(annotated(transform('  <p>{{ count }} orders</p>'))).toEqual(['p']);
+  });
+
+  it('still leaves an element with no literal text of its own', () => {
+    expect(annotated(transform('  <p>{{ count }}</p>'))).toEqual([]);
+  });
+
+  it('still annotates the usual text tags', () => {
+    const code = transform('  <h1>Title</h1>\n  <p>Body</p>\n  <a href="/x">Link</a>');
+    expect(annotated(code)).toEqual(['h1', 'p', 'a']);
+  });
+
+  it('leaves a pure container alone', () => {
+    const code = transform('  <div class="grid">\n    <p>Body</p>\n  </div>');
+    expect(annotated(code)).toEqual(['p']);
+  });
+
+  it('treats whitespace between elements as insignificant', () => {
+    // A container's text children are newlines and indentation. Counting
+    // those as copy would annotate every wrapper on the page.
+    const code = transform('  <div>\n\n    <p>Body</p>\n\n  </div>');
+    expect(annotated(code)).toEqual(['p']);
+  });
+});

@@ -22,12 +22,31 @@ const { isAnnotationEnabled, stampHtmlTag } = require('../lib/build-info.js');
  *   @vue/compiler-sfc, @vue/compiler-dom
  */
 
-const HTML_TEXT_ELEMENTS = new Set([
-  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'span', 'a', 'button', 'label',
-  'li', 'td', 'th',
-  'strong', 'em', 'small', 'b', 'i',
-]);
+/**
+ * Which elements are worth annotating.
+ *
+ * Not a tag allowlist. The codemod can rewrite an element whose meaningful
+ * children are *all* text, whatever the tag — and it refuses one that also
+ * holds an element or an interpolation, because replacing the text would
+ * destroy them. So that is the rule here too.
+ *
+ * A list of tags gets this wrong in both directions. It missed every
+ * `<div>` holding copy, which on a utility-class codebase is most of the
+ * page: one real Nuxt site had 35 editable elements going unannotated. And
+ * it annotated `<p>text <a>link</a></p>`, offering an edit the codemod then
+ * refused at pull-request time.
+ */
+function isEditable(node, NodeTypes) {
+  const children = node.children || [];
+
+  // Any run of literal text is editable on its own, even with an element or
+  // an interpolation beside it: the codemod rewrites the run, not the
+  // element, so `<div>Focus on the things you <span>love</span> while we
+  // handle the rest</div>` is two editable runs and a span.
+  return children.some(
+    (c) => c.type === NodeTypes.TEXT && c.content.trim().length > 0
+  );
+}
 
 // Vue AST NodeTypes (mirrors @vue/compiler-core NodeTypes enum)
 const NodeTypes = {
@@ -49,14 +68,11 @@ const NodeTypes = {
 function collectMutations(node, filePath, mutations, templateContentOffset, lineOffset) {
   if (node.type === NodeTypes.ELEMENT) {
     const tag = node.tag;
-    if (HTML_TEXT_ELEMENTS.has(tag)) {
-      const hasDirectText =
-        Array.isArray(node.children) &&
-        node.children.some(
-          (child) => child.type === NodeTypes.TEXT && child.content.trim().length > 0
-        );
-
-      if (hasDirectText) {
+    // A capitalised tag is a component: its children are slot content handed
+    // to something else, and the element that finally renders them is not
+    // this one, so an annotation here would point at the wrong element.
+    if (!/^[A-Z]/.test(tag)) {
+      if (isEditable(node, NodeTypes)) {
         const alreadyAnnotated =
           Array.isArray(node.props) &&
           node.props.some(

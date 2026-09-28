@@ -1073,6 +1073,34 @@ describe('the source editor', () => {
     await page.waitForTimeout(500);
   }
 
+  /**
+   * Replace a phrase in the open document, the way a person selects words.
+   *
+   * Retyping a whole line that contains a tag does not work: the editor
+   * auto-closes `<span ...>` as you type it, so a typed `</span>` lands twice.
+   */
+  async function replaceWords(from, to) {
+    await page.evaluate(([oldText]) => {
+      const pane = __IET_TEST__.root.querySelector('.__iet-source-editor:not([hidden])');
+      const walker = document.createTreeWalker(pane, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        const i = node.textContent.indexOf(oldText);
+        if (i === -1) continue;
+        const range = document.createRange();
+        range.setStart(node, i);
+        range.setEnd(node, i + oldText.length);
+        const sel = __IET_TEST__.root.getSelection?.() ?? window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return;
+      }
+      throw new Error(`"${oldText}" is not visible in the editor`);
+    }, [from]);
+    await page.keyboard.type(to);
+    await page.waitForTimeout(500);
+  }
+
   const discard = () =>
     page.evaluate(() =>
       [...__IET_TEST__.root.querySelectorAll('.__iet-source-btn')]
@@ -1394,6 +1422,32 @@ describe('the source editor', () => {
       expect(note).toContain('Styles are in this file');
       expect(note).toContain('Banner.vue');
     });
+  });
+
+  it('previews a run of text that sits beside another element', async () => {
+    // `<p>Read our <span>getting started guide</span> to ship...</p>` — the
+    // element cannot be replaced wholesale without destroying the span, so
+    // each run of text is previewed on its own. This did nothing at all
+    // until the outline started reporting runs.
+    const paragraph = 'p[data-edit-line="31"]';
+    const linkText = () =>
+      page.evaluate(() => document.querySelector('span[data-edit-line="32"]').textContent.trim());
+    const runs = () =>
+      page.evaluate(() =>
+        [...document.querySelector('p[data-edit-line="31"]').childNodes]
+          .filter((n) => n.nodeType === 3 && n.textContent.trim())
+          .map((n) => n.textContent.trim())
+      );
+
+    await openSource(paragraph);
+    expect(await runs()).toEqual(['Read our', 'to ship your first change.']);
+
+    await replaceWords('Read our', 'Read the');
+    await replaceWords('to ship your first change.', 'before you ship.');
+
+    expect(await runs()).toEqual(['Read the', 'before you ship.']);
+    // The nested element is annotated in its own right and must survive.
+    expect(await linkText()).toBe('getting started guide');
   });
 
   it('shields the page while it is open', async () => {

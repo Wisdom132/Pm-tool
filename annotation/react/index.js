@@ -22,13 +22,6 @@ const {
  *   plugins: [react(), babel({ plugins: ['../annotation/react/index.js'] })]
  */
 
-const HTML_TEXT_ELEMENTS = new Set([
-  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'span', 'a', 'button', 'label',
-  'li', 'td', 'th',
-  'strong', 'em', 'small', 'b', 'i',
-]);
-
 /** Functions whose first string argument is a translation key. */
 const TRANSLATE_FNS = new Set(['t', '$t', 'translate', 'i18n']);
 
@@ -100,7 +93,11 @@ module.exports = function babelPluginInlineEditAnnotation({ types: t }) {
           return;
         }
 
-        if (!HTML_TEXT_ELEMENTS.has(tagName)) return;
+        // A capitalised tag is a component. Its children are a prop handed to
+        // something else, and the DOM element that finally renders them is
+        // not this one — so an annotation here would point at the wrong
+        // element on the page.
+        if (/^[A-Z]/.test(tagName)) return;
 
         // Idempotency: skip if already annotated
         if (hasAttr('data-edit-file')) return;
@@ -108,14 +105,21 @@ module.exports = function babelPluginInlineEditAnnotation({ types: t }) {
         const jsxElement = jsxPath.parent; // JSXElement
         const children = Array.isArray(jsxElement.children) ? jsxElement.children : [];
 
-        // Either a direct JSXText child (raw string, not {expression}) or a
-        // lone translation call whose key we can resolve to a locale file.
-        const hasDirectText = children.some(
+        // Not a tag allowlist. The rule is what the codemod can edit, which
+        // is any literal run of text — a list missed every <div> holding
+        // copy, which on a utility-class codebase is most of the page.
+        // Any run of literal text is editable on its own, even with an
+        // element or an {expression} beside it: the codemod rewrites the run,
+        // not the element.
+        const editableText = children.some(
           (child) => t.isJSXText(child) && child.value.trim().length > 0
         );
-        const i18nKey = hasDirectText ? null : translationKey(children, t);
 
-        if (!hasDirectText && !i18nKey) return;
+        // Text rendered through a translation function lives in a locale
+        // file, so it is reachable even though the element holds no literal.
+        const i18nKey = editableText ? null : translationKey(children, t);
+
+        if (!editableText && !i18nKey) return;
 
         // Source location
         const loc = jsxPath.node.loc;

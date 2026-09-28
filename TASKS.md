@@ -329,7 +329,22 @@ the element was built from. The point is not that an editor runs in the browser
       which replaces a whole inner range, so those elements are skipped.
       Annotating what cannot be committed offers an edit that fails silently
       at PR time.
-- [ ] **9.5** Angular is source files and a config excerpt, not a runnable app:
+- [x] **9.5** **The editor runs on the examples**, the way it does on the
+      extension's own demo — one Vite plugin injects the built content script
+      and a chrome.* shim into each example page in dev.
+
+      The difference from `preview.html` is that `/api/file` reads the real
+      file from the working tree rather than a canned fixture, so opening a
+      component shows what actually rendered the page and an edit previews
+      against it. The extension is served from `dist/` rather than copied, so
+      a rebuild needs nothing kept in sync; if it has not been built, the page
+      says so instead of failing quietly.
+
+      Responsive preview and opening a pull request both report plainly that
+      they need the installed extension, rather than appearing to work. Dev
+      only — a production build of an example ships no editor, and that is
+      asserted.
+- [ ] **9.6** Angular is source files and a config excerpt, not a runnable app:
       a real workspace plus `@angular-builders/custom-webpack` outweighs every
       other dependency here. Its annotator is unit tested; **its wiring is
       not** — the same gap that hid the Vue bug.

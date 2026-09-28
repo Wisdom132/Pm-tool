@@ -365,3 +365,41 @@ describe('Svelte components', () => {
     expect(result.content).toContain('Ship it on Thursday');
   });
 });
+
+describe('JSX text beside another element', () => {
+  const src = [
+    'export function B() {',
+    '  return (',
+    '    <p>Read our <a href="/x">guide</a> today</p>',
+    '  );',
+    '}',
+  ].join('\n');
+
+  it('rewrites the run before the element', () => {
+    const result = applyJsxEdits(src, 'B.jsx', [
+      { originalText: 'Read our', newText: 'See our', sourceLine: 3 },
+    ]);
+
+    expect(result.failed).toHaveLength(0);
+    expect(result.content).toContain('<p>See our <a href="/x">guide</a>');
+  });
+
+  it('leaves the link untouched', () => {
+    const result = applyJsxEdits(src, 'B.jsx', [
+      { originalText: 'today', newText: 'now', sourceLine: 3 },
+    ]);
+
+    expect(result.content).toContain('<a href="/x">guide</a>');
+    expect(result.content).toContain('now</p>');
+  });
+
+  it('leaves an expression beside the text alone', () => {
+    const withExpr = 'const a = <h1>Hello {name} and welcome</h1>;';
+    const result = applyJsxEdits(withExpr, 'B.jsx', [
+      { originalText: 'and welcome', newText: 'and hello again', sourceLine: 1 },
+    ]);
+
+    expect(result.failed).toHaveLength(0);
+    expect(result.content).toContain('{name} and hello again');
+  });
+});

@@ -17,6 +17,7 @@
     "./react": "./react/index.js",
     "./vue": "./vue/index.js",
     "./svelte": "./svelte/index.js",
+    "./nuxt": "./nuxt/index.js",
     "./angular": "./angular/index.js",
     "./angular/webpack-config": "./angular/webpack.config.js",
     "./angular/loader": "./angular/template-loader.js",
@@ -26,6 +27,7 @@
     "react",
     "vue",
     "svelte",
+    "nuxt",
     "angular",
     "lib",
     "README.md"

@@ -18,6 +18,33 @@ npm run example:vue
 npm run example:svelte
 ```
 
+Each page carries a bar naming the framework and the component file, because
+all three render the same thing and are otherwise indistinguishable.
+
+## The editor runs on them
+
+`npm run build:ext` once, then start any example: the toolbar appears on the
+page, exactly as the extension's own demo does. Alt-click any text to open
+its source.
+
+The difference from `inline-edit-tool/extension/preview.html` is that
+`/api/file` here reads the **real file from disk**, not a canned fixture — so
+you are looking at the component that actually rendered the page, and an edit
+previews against it. Editing `banner.css` in the styles tab resizes the
+heading on the page as you type.
+
+`Cmd/Ctrl+Shift+E` toggles the toolbar. It opens on load by default; pass
+`autoOpen: false` if you would rather summon it.
+
+Served straight from `inline-edit-tool/extension/dist/`, so a rebuild is
+picked up on the next reload with nothing to keep in sync. If the extension
+has not been built, the page says so instead of failing quietly.
+
+Two things the examples cannot do, because a web page is not an extension:
+**responsive preview** (it resizes the browser window) and **opening a pull
+request**. Both report that plainly rather than appearing to work. This is
+dev-only — a production build of an example ships no editor.
+
 ## What each one shows
 
 Every `Banner` component contains the same four paragraphs, chosen to cover
@@ -51,6 +78,68 @@ alone.
 
 Annotating what cannot be committed would offer an edit that silently fails
 at PR time, which is worse than not offering the edit.
+
+## Trying it on your own app
+
+The same two plugins work in any Vite project — no extension, no service, no
+GitHub. From your app:
+
+```bash
+npm i -D file:/ABSOLUTE/PATH/TO/inline-edit-tool-repo/annotation
+```
+
+```js
+// vite.config.js
+import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const REPO = '/ABSOLUTE/PATH/TO/inline-edit-tool-repo';
+
+const inlineEdit = require('@quartalyst/inline-edit-annotation/vue');
+const inlineEditPreview = require(`${REPO}/examples/inline-edit-preview.cjs`);
+
+export default defineConfig({
+  plugins: [
+    inlineEdit(),   // must come before vue(): it needs the raw .vue file
+    vue(),
+    inlineEditPreview({
+      extensionDist: `${REPO}/inline-edit-tool/extension/dist`,
+    }),
+  ],
+});
+```
+
+Then `INLINE_EDIT=1 npm run dev`. Build the extension once first
+(`npm run build:ext` in this repo) or the page will tell you it is missing.
+
+`root` defaults to the directory the dev server runs in, which is what the
+annotation plugins make their paths relative to — so a normal project needs
+no path configuration beyond the two above.
+
+Nuxt keeps its Vite config one level in:
+
+```js
+// nuxt.config.ts
+export default defineNuxtConfig({
+  vite: { plugins: [inlineEdit(), inlineEditPreview({ extensionDist })] },
+});
+```
+
+This gives you the whole editor against your real files. What it cannot do is
+open a pull request — for that you need the extension and the service, because
+the commit goes through a GitHub App.
+
+## Where the styles live
+
+Deliberately different in each, because that is what the editor's Styles tab
+has to cope with:
+
+- **React** — `Banner.jsx` imports `banner.css`, so the tab opens that file.
+- **Vue** — a `<style scoped>` block inside the component; the tab says so and
+  points at the first tab. Scoped styles preview unscoped.
+- **Svelte** — a `<style>` block, same treatment.
 
 ## Angular
 

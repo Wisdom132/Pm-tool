@@ -7,10 +7,11 @@ import { createRequire } from 'node:module';
 // which Vite bundles into the config, and a bundled CJS module cannot
 // `require`. createRequire loads it as the module it actually is.
 const require = createRequire(import.meta.url);
+const inlineEditPreview = require('../inline-edit-preview.cjs');
 const inlineEdit = require('../../annotation/svelte/index.js');
 
 // inlineEdit runs first: the Svelte compiler turns a component into
 // JavaScript, so the annotations have to be in the markup before it does.
 export default defineConfig({
-  plugins: [inlineEdit(), svelte({ configFile: false })],
+  plugins: [inlineEdit(), svelte({ configFile: false }), inlineEditPreview()],
 });

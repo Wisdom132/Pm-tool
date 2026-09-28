@@ -47,6 +47,23 @@ function collectTextNodes(root, offset, lineOffset) {
             end: offset + last.loc.end.offset,
           },
         });
+      } else if (textChildren.length > 0) {
+        // Text sitting beside an element or an interpolation. The element as
+        // a whole cannot be rewritten — that would destroy the child — but
+        // each run of text can be, on its own. `<div>Focus on the things you
+        // <span>love</span> while we handle the rest</div>` is two editable
+        // runs and a span, not one uneditable block.
+        for (const child of textChildren) {
+          found.push({
+            line: child.loc.start.line + lineOffset,
+            column: child.loc.start.column,
+            text: child.content.replace(/\s+/g, ' ').trim(),
+            node: {
+              start: offset + child.loc.start.offset,
+              end: offset + child.loc.end.offset,
+            },
+          });
+        }
       }
     }
 

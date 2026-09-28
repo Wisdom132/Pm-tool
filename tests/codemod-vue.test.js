@@ -154,3 +154,82 @@ describe('vue structural edits', () => {
     expect(content).toBe(SFC);
   });
 });
+
+// ============================================================
+//  Text beside another element
+//
+//  `<div>Focus on the things you <span>love</span> while we
+//  handle the rest</div>` used to be uneditable: rewriting the
+//  element would destroy the span. Each run of text is patched
+//  on its own instead, which is what makes copy in a <div> —
+//  most of the page on a utility-class codebase — reachable.
+// ============================================================
+describe('text runs beside an element', () => {
+  const sfc = [
+    '<template>',
+    '  <div class="hero">',
+    '    Focus on the things you <span class="text-pink"> love</span> while we',
+    '    handle the rest',
+    '  </div>',
+    '</template>',
+  ].join('\n');
+
+  it('rewrites the run before the element', () => {
+    const result = applyVueEdits(sfc, 'home-hero.vue', [
+      { originalText: 'Focus on the things you', newText: 'Focus on what matters', sourceLine: 3 },
+    ]);
+
+    expect(result.failed).toHaveLength(0);
+    expect(result.content).toContain('Focus on what matters <span class="text-pink"> love</span>');
+  });
+
+  it('leaves the nested element untouched', () => {
+    const result = applyVueEdits(sfc, 'home-hero.vue', [
+      { originalText: 'Focus on the things you', newText: 'Anything', sourceLine: 3 },
+    ]);
+
+    expect(result.content).toContain('<span class="text-pink"> love</span>');
+  });
+
+  it('rewrites the run after the element', () => {
+    const result = applyVueEdits(sfc, 'home-hero.vue', [
+      { originalText: 'while we handle the rest', newText: 'while we do the rest', sourceLine: 3 },
+    ]);
+
+    expect(result.failed).toHaveLength(0);
+    expect(result.content).toContain('while we do the rest');
+    expect(result.content).toContain('<span class="text-pink"> love</span>');
+  });
+
+  it('still rewrites the nested element on its own', () => {
+    const result = applyVueEdits(sfc, 'home-hero.vue', [
+      { originalText: 'love', newText: 'enjoy', sourceLine: 3 },
+    ]);
+
+    expect(result.failed).toHaveLength(0);
+    // The leading space belongs to the source, not the copy, and is kept.
+    expect(result.content).toContain('<span class="text-pink"> enjoy</span>');
+  });
+
+  it('edits two runs of one element independently', () => {
+    const result = applyVueEdits(sfc, 'home-hero.vue', [
+      { originalText: 'Focus on the things you', newText: 'Focus on what matters', sourceLine: 3 },
+      { originalText: 'while we handle the rest', newText: 'we do the rest', sourceLine: 3 },
+    ]);
+
+    expect(result.failed).toHaveLength(0);
+    expect(result.content).toContain('Focus on what matters');
+    expect(result.content).toContain('we do the rest');
+    expect(result.content).toContain('<span class="text-pink"> love</span>');
+  });
+
+  it('leaves an interpolation beside the text alone', () => {
+    const withExpr = '<template>\n  <p>{{ count }} orders today</p>\n</template>';
+    const result = applyVueEdits(withExpr, 'x.vue', [
+      { originalText: 'orders today', newText: 'orders this week', sourceLine: 2 },
+    ]);
+
+    expect(result.failed).toHaveLength(0);
+    expect(result.content).toContain('{{ count }} orders this week');
+  });
+});

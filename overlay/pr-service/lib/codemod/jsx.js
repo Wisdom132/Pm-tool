@@ -40,12 +40,25 @@ function collectTextNodes(ast) {
     );
     if (textChildren.length === 0) return;
 
-    // Only handle elements whose entire content is text. Anything with an
-    // interpolation or a nested element is ambiguous to rewrite wholesale.
     const meaningful = node.children.filter(
       (c) => !(c.type === 'JSXText' && c.value.trim().length === 0)
     );
-    if (meaningful.length !== textChildren.length) return;
+
+    // Text sitting beside an element or an {expression}. The element as a
+    // whole cannot be rewritten — that would destroy the child — but each run
+    // of text can be, on its own. `<p>Read our <a>guide</a> today</p>` is two
+    // editable runs and a link, not one uneditable block.
+    if (meaningful.length !== textChildren.length) {
+      for (const child of textChildren) {
+        found.push({
+          line: child.loc?.start.line,
+          column: child.loc?.start.column,
+          text: child.value.replace(/\s+/g, ' ').trim(),
+          node: { first: child, all: [child] },
+        });
+      }
+      return;
+    }
 
     const text = textChildren.map((c) => c.value).join('').replace(/\s+/g, ' ').trim();
 

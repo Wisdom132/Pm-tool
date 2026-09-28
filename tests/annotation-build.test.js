@@ -67,19 +67,25 @@ function annotatedLines(code) {
  * is deliberate: a plugin should annotate exactly what its codemod can then
  * edit safely.
  *
- *   React  — the JSX codemod works on the AST and can rewrite a single
- *            JSXText node, so an element mixing text with `{expr}` is
- *            editable and gets annotated.
- *   Vue    — same, via the template AST.
- *   Svelte — routes to the HTML codemod, which replaces an element's whole
- *            inner range. Text beside a `{expr}` cannot be rewritten without
- *            destroying the expression, so those elements are left alone.
+ * The rule is each plugin's own codemod's rule, not a tag allowlist. A list
+ * missed every `<div>` holding copy, which on a utility-class codebase is
+ * most of the page.
  *
- * Annotating what cannot be committed would offer an edit that silently
- * fails at PR time, which is worse than not offering it.
+ *   React, Vue — any run of literal text is editable on its own, so an
+ *                element holding text *beside* another element or an
+ *                `{expr}` is annotated: the codemod rewrites the run and
+ *                leaves the child alone.
+ *   Svelte     — routes to the HTML codemod, which still replaces an
+ *                element's whole inner range, so mixed content is skipped.
+ *                That is the honest difference, not an oversight: annotating
+ *                it would offer an edit that fails at pull-request time.
+ *
+ * The three also differ in where their styles live, which is what the
+ * editor's Styles tab has to cope with: React imports a stylesheet, Vue and
+ * Svelte keep a <style> block inside the component.
  */
 const EXAMPLES_UNDER_TEST = [
-  { name: 'react', file: 'Banner.jsx', framework: 'react', expected: [6, 7, 8, 9] },
+  { name: 'react', file: 'Banner.jsx', framework: 'react', expected: [8, 9, 10, 11] },
   { name: 'vue', file: 'Banner.vue', framework: 'vue', expected: [3, 4, 5, 6] },
   { name: 'svelte', file: 'Banner.svelte', framework: 'svelte', expected: [7, 8, 10] },
 ];

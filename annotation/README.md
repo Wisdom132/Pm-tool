@@ -66,6 +66,40 @@ import inlineEdit from '@quartalyst/inline-edit-annotation/vue';
 export default { plugins: [vue(), inlineEdit()] };
 ```
 
+### Nuxt
+
+```ts
+// nuxt.config.ts
+export default defineNuxtConfig({
+  modules: ['@quartalyst/inline-edit-annotation/nuxt'],
+});
+```
+
+Nuxt needs a module rather than the Vite plugin. It renders its HTML through
+Nitro, so Vite's `transformIndexHtml` never runs — and that is the hook the
+plain plugin uses to stamp the branch and commit onto `<html>`. Register the
+Vite plugin by hand and the annotations appear while the build metadata does
+not, which leaves the extension unable to tell which build it is editing.
+
+To run the editor on the page as well, without installing the extension
+(development only):
+
+```ts
+modules: [
+  ['@quartalyst/inline-edit-annotation/nuxt', {
+    preview: {
+      extensionDist: '/path/to/inline-edit-tool/extension/dist',
+      autoOpen: false,   // summon with Cmd/Ctrl+Shift+E instead
+    },
+  }],
+],
+```
+
+The toolbar opens on load by default. On a project where the module stays in
+`nuxt.config` that means it appears on every reload during ordinary
+development, so `autoOpen: false` leaves it to the shortcut. The shortcut
+toggles it either way.
+
 ### Svelte / SvelteKit
 
 ```js

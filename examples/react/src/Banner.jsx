@@ -1,3 +1,5 @@
+import './banner.css';
+
 const label = '<p>not markup</p>';
 
 export function Banner({ count = 12 }) {

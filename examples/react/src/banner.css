@@ -1,0 +1,18 @@
+/* Imported by Banner.jsx, which is how the editor's Styles tab finds it. */
+
+.banner {
+  padding: 22px;
+  border-radius: 12px;
+  background: #f1f5f9;
+}
+
+.banner h1 {
+  margin: 0 0 6px;
+  font-size: 26px;
+  color: #0f172a;
+}
+
+.banner .lead {
+  margin: 0 0 4px;
+  color: #475569;
+}

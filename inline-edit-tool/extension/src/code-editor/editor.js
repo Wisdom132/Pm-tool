@@ -248,9 +248,22 @@ function describeElement(node, doc, g) {
 
   let text = "";
   let textOnly = open.name !== g.selfClose;
+
+  // Each literal run of text, in order. An element holding copy beside
+  // another element cannot be replaced wholesale, but its runs can be —
+  // which is exactly what the codemod does to the source, and what the
+  // element-level editor does to the page.
+  const runs = [];
+
   for (let child = open.nextSibling; child; child = child.nextSibling) {
-    if (child.name === g.text) text += doc.sliceString(child.from, child.to);
-    else if (child.name === g.element || g.dynamic.includes(child.name)) textOnly = false;
+    if (child.name === g.text) {
+      const raw = doc.sliceString(child.from, child.to);
+      text += raw;
+      const trimmed = raw.replace(/\s+/g, " ").trim();
+      if (trimmed && !INTERPOLATION.test(trimmed)) runs.push(trimmed);
+    } else if (child.name === g.element || g.dynamic.includes(child.name)) {
+      textOnly = false;
+    }
   }
 
   if (textOnly && INTERPOLATION.test(text)) textOnly = false;
@@ -259,6 +272,7 @@ function describeElement(node, doc, g) {
   return {
     attributes,
     text: textOnly ? text.replace(/\s+/g, " ").trim() : null,
+    runs,
     line: line.number,
     // The annotation carries a column too; it only ever breaks ties between
     // two elements opening on the same line.

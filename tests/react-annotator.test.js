@@ -73,9 +73,14 @@ describe('react annotation plugin', () => {
     expect(out).not.toContain('data-edit-file');
   });
 
-  it('annotates an element mixing text and an expression', () => {
-    const out = transform('<h1>Hello {name}</h1>');
-    expect(out).toContain('data-edit-file');
+  it('annotates literal text sitting beside an expression', () => {
+    // "Hello" is real copy in the file; `{name}` is left alone. The codemod
+    // rewrites the run, not the element.
+    expect(transform('<h1>Hello {name}</h1>')).toContain('data-edit-file');
+  });
+
+  it('still leaves an element with no literal text of its own', () => {
+    expect(transform('<h1>{name}</h1>')).not.toContain('data-edit-file');
   });
 
   it('skips whitespace-only children', () => {
@@ -83,9 +88,20 @@ describe('react annotation plugin', () => {
     expect(out).not.toContain('data-edit-file');
   });
 
-  it('skips non-text-bearing tags', () => {
-    const out = transform('<section>Hello</section>');
-    expect(out).not.toContain('data-edit-file');
+  it('annotates any tag that holds only text', () => {
+    // Not a tag allowlist: the rule is what the codemod can edit. A list
+    // missed every <div> holding copy, which on a utility-class codebase is
+    // most of the page.
+    expect(transform('<section>Hello</section>')).toContain('data-edit-file');
+    expect(transform('<div className="card-title">Freshly Cooked Meals</div>')).toContain(
+      'data-edit-file'
+    );
+  });
+
+  it('leaves a container with no text of its own', () => {
+    const out = transform('<div className="grid"><p>Body</p></div>');
+    expect(out.match(/data-edit-file/g)).toHaveLength(1);
+    expect(/<div[^>]*data-edit-file/.test(out)).toBe(false);
   });
 
   it('skips React components', () => {

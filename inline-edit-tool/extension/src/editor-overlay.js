@@ -55,21 +55,37 @@ export function effectiveBackground(el, getComputedStyleImpl = getComputedStyle)
  * @param {() => void} handlers.onCancel
  * @returns {{destroy: () => void, reposition: () => void, element: HTMLElement}}
  */
-export function openEditorOverlay(target, root, { onCommit, onCancel }) {
+/**
+ * @param {object} options
+ * @param {Text} [options.textNode] edit just this run of the element's text,
+ *        for copy that sits beside another element
+ */
+export function openEditorOverlay(target, root, { textNode, onCommit, onCancel }) {
   const computed = getComputedStyle(target);
 
   const overlay = document.createElement("div");
   overlay.className = "__iet-edit-overlay";
   overlay.contentEditable = "plaintext-only";
   overlay.spellcheck = false;
-  overlay.textContent = target.innerText;
+  overlay.textContent = textNode ? textNode.textContent.trim() : target.innerText;
 
   for (const prop of COPIED_STYLES) overlay.style[prop] = computed[prop];
   overlay.style.background = effectiveBackground(target);
   overlay.style.padding = computed.padding;
 
+  /** The run's own box when editing one, otherwise the element's. */
+  function box() {
+    if (!textNode || !textNode.isConnected) return target.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(textNode);
+    const rect = range.getBoundingClientRect();
+    // A run that has wrapped across lines has no single usable box; fall
+    // back to the element rather than draw the overlay somewhere wrong.
+    return rect.width > 0 && rect.height > 0 ? rect : target.getBoundingClientRect();
+  }
+
   function reposition() {
-    const rect = target.getBoundingClientRect();
+    const rect = box();
     overlay.style.top = `${rect.top}px`;
     overlay.style.left = `${rect.left}px`;
     overlay.style.minWidth = `${rect.width}px`;

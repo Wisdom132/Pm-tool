@@ -578,10 +578,16 @@ function onDocumentClick(e) {
   }
   e.preventDefault();
   e.stopPropagation();
-  activateOn(el);
+  activateOn(el, e);
 }
 
-function activateOn(el) {
+/**
+ * @param {Element} el
+ * @param {MouseEvent} [event] carries the pointer position, which is what
+ *        decides which run of text is being edited when an element holds
+ *        copy beside another element
+ */
+function activateOn(el, event) {
   if (activeTool === TOOL.INSPECT) {
     inspector.show(el);
     labels.show(el, { state: "selected" });
@@ -589,7 +595,7 @@ function activateOn(el) {
     return;
   }
   if (activeTool === TOOL.EDIT) {
-    beginEdit(el);
+    beginEdit(el, event);
     return;
   }
 
@@ -712,7 +718,7 @@ function describeOp(edit) {
 // ============================================================
 //  Editing
 // ============================================================
-function beginEdit(el) {
+function beginEdit(el, event) {
   if (activeTarget === el) return;
   cancelActiveEditor();
 
@@ -723,8 +729,13 @@ function beginEdit(el) {
   guides.show(el, "selected");
   hideCrumbs();
 
+  // Copy beside another element is edited a run at a time, so the overlay
+  // covers the run that was clicked rather than the whole element.
+  const run = hasMixedContent(el) ? runAtPoint(el, event) : null;
+
   activeOverlay = openEditorOverlay(el, root, {
-    onCommit: (text) => commitEdit(el, text),
+    textNode: run?.node,
+    onCommit: (text) => commitEdit(el, text, run?.index),
     onCancel: () => finishEditing(el),
   });
 }
@@ -739,10 +750,14 @@ function finishEditing(el) {
   }
 }
 
-function commitEdit(el, rawText) {
+function commitEdit(el, rawText, run) {
   const newText = rawText.trim();
-  const originalRaw = el.innerText;
-  const key = sessionKey(el);
+  const isRun = typeof run === "number";
+  // For a run the original is that text node alone, not the element's text —
+  // sending the element's would ask the codemod to match a string that does
+  // not exist in the source as one piece.
+  const originalRaw = isRun ? textRunsOf(el)[run]?.textContent ?? "" : el.innerText;
+  const key = sessionKey(el, undefined, isRun ? run : undefined);
 
   const { changed } = session.record({
     key,
@@ -753,6 +768,7 @@ function commitEdit(el, rawText) {
     // Present when the text comes from a translation call; the service
     // redirects the patch to the locale file rather than the component.
     i18nKey: el.dataset.editI18nKey,
+    run: isRun ? run : undefined,
     originalText: originalRaw.trim(),
     originalRaw,
     newText,
@@ -787,10 +803,25 @@ function applyEditToDom(el, edit) {
 
   if (edit.op) applyStructureOp(el, edit);
   else if (edit.attribute) setAttributeValue(el, edit.attribute, edit.newText);
+  else if (typeof edit.run === "number") setRunText(el, edit.run, edit.newText);
   else el.innerText = edit.newText;
 
   el.classList.add(CLS.dirty);
   observer?.resume();
+}
+
+/**
+ * Replace one run's text, keeping the whitespace around it.
+ *
+ * The surrounding spaces are what separate the run from its neighbours —
+ * trimming them would weld `you` and `love` together on the page.
+ */
+function setRunText(el, index, text) {
+  const node = textRunsOf(el)[index];
+  if (!node || text === undefined) return;
+
+  const [, lead = "", , trail = ""] = /^(\s*)([\s\S]*?)(\s*)$/.exec(node.textContent) || [];
+  node.textContent = `${lead}${String(text).trim()}${trail}`;
 }
 
 /** Undo an edit's effect, returning the element to how the page found it. */
@@ -800,6 +831,7 @@ function revertEditInDom(el, edit) {
 
   if (edit.op) revertStructureOp(el, edit);
   else if (edit.attribute) setAttributeValue(el, edit.attribute, edit.originalText);
+  else if (typeof edit.run === "number") setRunText(el, edit.run, edit.originalRaw);
   else if (edit.originalRaw !== undefined) el.innerText = edit.originalRaw;
 
   el.classList.remove(CLS.dirty);
@@ -898,9 +930,56 @@ function cancelActiveEditor() {
  * classes, a structural op — so the kind is part of the key. Without it,
  * changing a heading's text would overwrite the record of changing its link.
  */
-function sessionKey(el, attribute) {
+// ============================================================
+//  Text runs
+//
+//  An element can hold copy beside another element:
+//  `<div>Focus on the things you <span>love</span> while we
+//  handle the rest</div>`. Rewriting the element would destroy
+//  the span, so each run of text is edited on its own — which
+//  is exactly what the codemod does to the source.
+// ============================================================
+
+/** The element's own non-empty text nodes, in document order. */
+function textRunsOf(el) {
+  return [...el.childNodes].filter(
+    (n) => n.nodeType === Node.TEXT_NODE && n.textContent.trim().length > 0
+  );
+}
+
+/** Does this element hold text beside something else? */
+function hasMixedContent(el) {
+  return Boolean(el.firstElementChild) && textRunsOf(el).length > 0;
+}
+
+/** The run containing a click, or the first one if the click missed. */
+function runAtPoint(el, event) {
+  const runs = textRunsOf(el);
+  if (runs.length === 0) return null;
+
+  const x = event?.clientX;
+  const y = event?.clientY;
+
+  if (typeof x === "number") {
+    for (let i = 0; i < runs.length; i++) {
+      const range = document.createRange();
+      range.selectNodeContents(runs[i]);
+      for (const rect of range.getClientRects()) {
+        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+          return { node: runs[i], index: i };
+        }
+      }
+    }
+  }
+
+  return { node: runs[0], index: 0 };
+}
+
+function sessionKey(el, attribute, run) {
   const base = editKey(el);
-  return attribute ? `${base}#attr:${attribute}` : base;
+  if (attribute) return `${base}#attr:${attribute}`;
+  if (typeof run === "number") return `${base}#run:${run}`;
+  return base;
 }
 
 /** Locate the live element for a key, if it is on this page. */
@@ -908,7 +987,7 @@ function elementForKey(key) {
   // Keys carry a suffix naming the kind of edit: "#attr:href" or "#op".
   // Stripping only "#attr:" left structural keys unresolvable, so undoing a
   // move cleared the record without putting the element back.
-  const base = key.replace(/#(attr:.*|op)$/, "");
+  const base = key.replace(/#(attr:.*|op|run:\d+)$/, "");
   const candidates = editableEls.length
     ? editableEls
     : Array.from(document.querySelectorAll(EDITABLE_SELECTOR));
@@ -1262,6 +1341,19 @@ function previewMarkup(sourceFile, outline) {
       if (el.textContent.trim() !== entry.text) {
         el.textContent = entry.text;
         touched = true;
+      }
+    } else if (entry.runs?.length) {
+      // Copy beside another element: each run is replaced on its own, so the
+      // child survives. Only when the source and the page agree on how many
+      // runs there are — if they disagree the mapping is a guess, and a
+      // guess here would put text in the wrong place.
+      const nodes = textRunsOf(el);
+      if (nodes.length === entry.runs.length) {
+        entry.runs.forEach((value, i) => {
+          if (nodes[i].textContent.trim() === value) return;
+          setRunText(el, i, value);
+          touched = true;
+        });
       }
     }
 
