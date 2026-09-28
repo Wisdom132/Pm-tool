@@ -3,7 +3,8 @@ import {
   buildCommitMessage,
   buildPrBody,
   buildIssueBody,
-} from '../overlay/pr-service/lib/patcher.js';
+  plural,
+} from '../apps/api/src/editing/patcher.js';
 
 describe('buildCommitMessage', () => {
   it('includes the page hostname', () => {
@@ -150,5 +151,55 @@ describe('buildIssueBody', () => {
     const body = buildIssueBody({ ...base, note: 'Spotted in review' });
     expect(body).toContain('Reported by **@octocat**');
     expect(body).toContain('Spotted in review');
+  });
+});
+
+describe('attribution', () => {
+  const base = {
+    edits: [{ sourceFile: 'a.vue', sourceLine: 1, originalText: 'a', newText: 'b' }],
+    pageUrl: 'https://acme.com/',
+  };
+
+  it('mentions a provider handle', () => {
+    expect(buildPrBody({ ...base, editor: { login: 'octocat' } })).toContain('**@octocat**');
+  });
+
+  it('does not @-prefix an email address', () => {
+    // Two bugs in one: it publishes the address into a body that may land in
+    // a public repository, and `@ada` fires a mention at whoever owns that
+    // handle on the provider.
+    const body = buildPrBody({ ...base, editor: { login: 'ada@acme.com' } });
+    expect(body).toContain('**ada@acme.com**');
+    expect(body).not.toContain('@ada@acme.com');
+  });
+
+  it('does not @-prefix a display name', () => {
+    const body = buildPrBody({ ...base, editor: { login: 'Ada Obi' } });
+    expect(body).toContain('**Ada Obi**');
+    expect(body).not.toContain('**@Ada Obi**');
+  });
+
+  it('omits attribution entirely when there is nobody to name', () => {
+    expect(buildPrBody({ ...base, editor: {} })).not.toContain('Opened by');
+    expect(buildIssueBody({ ...base, editor: {} })).not.toContain('Reported by');
+  });
+
+  it('applies the same rule to issues', () => {
+    expect(buildIssueBody({ ...base, editor: { login: 'octocat' } })).toContain('**@octocat**');
+    expect(buildIssueBody({ ...base, editor: { login: 'a@b.com' } })).not.toContain('@a@b.com');
+  });
+});
+
+describe('plural', () => {
+  it('does not say "0 change"', () => {
+    expect(plural(0, 'change')).toBe('0 changes');
+  });
+
+  it('says "1 change"', () => {
+    expect(plural(1, 'change')).toBe('1 change');
+  });
+
+  it('says "2 changes"', () => {
+    expect(plural(2, 'change')).toBe('2 changes');
   });
 });

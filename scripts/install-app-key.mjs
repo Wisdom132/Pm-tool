@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Put a GitHub App private key into .env.local.
+ * Put a GitHub App private key into apps/api/.env.
  *
  * Doing this by hand goes wrong in predictable ways: the key is multi-line so
  * a plain copy breaks the file, `>>` appends a second definition instead of
@@ -20,7 +20,7 @@ import { homedir } from 'node:os';
 import { createPrivateKey } from 'node:crypto';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const ENV_FILE = resolve(here, '../overlay/pr-service/.env.local');
+const ENV_FILE = resolve(here, '../apps/api/.env');
 
 /** GitHub names the download <app-name>.<date>.private-key.pem */
 async function findCandidates() {
@@ -85,7 +85,7 @@ let env;
 try {
   env = await readFile(ENV_FILE, 'utf8');
 } catch {
-  console.error(`\n  No .env.local at ${ENV_FILE}\n`);
+  console.error(`\n  No .env at ${ENV_FILE}\n`);
   process.exit(1);
 }
 

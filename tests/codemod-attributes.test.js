@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { applyJsxEdits } from '../overlay/pr-service/lib/codemod/jsx.js';
-import { applyHtmlEdits } from '../overlay/pr-service/lib/codemod/html.js';
+import { applyJsxEdits } from '../apps/api/src/editing/codemod/jsx.js';
+import { applyHtmlEdits } from '../apps/api/src/editing/codemod/html.js';
 
 const JSX = `export default function Hero() {
   return (

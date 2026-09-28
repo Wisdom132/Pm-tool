@@ -53,20 +53,21 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
 
-  build-service:
-    name: Build pr-service
+  build-api:
+    name: Build API
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22.12 or newer: the codemods import @babel/parser 8, which is
+          # ESM-only, and the Nest build is CommonJS. Older runtimes build
+          # fine and then fail on the first JSX edit.
+          node-version: 22
           cache: npm
-          cache-dependency-path: overlay/pr-service/package-lock.json
-      - run: npm install --prefix overlay/pr-service
-      - run: npm run build --prefix overlay/pr-service
-        env:
-          TOKEN_SECRET: ci-placeholder-secret-not-used-at-build-time
+      - run: npm ci
+      - run: npx prisma generate --schema apps/api/prisma/schema.prisma
+      - run: npm run build:api
 
   annotation-guard:
     name: No annotations in production build

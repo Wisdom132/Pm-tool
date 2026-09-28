@@ -1,8 +1,13 @@
-# Deploying the pr-service
+# Deploying the API
 
-The service is a Next.js app. It holds GitHub credentials and opens pull
-requests on the editor's behalf, so treat it as production infrastructure
-even though it is small.
+`apps/api` is a NestJS app backed by Postgres. It holds GitHub credentials
+belonging to *other companies* and opens pull requests on an editor's behalf,
+so treat it as production infrastructure.
+
+**Node 22.12 or newer.** The codemods import `@babel/parser` 8, which is
+ESM-only, while the build output is CommonJS — so this relies on Node's
+`require(esm)` support. An older runtime builds successfully and then fails on
+the first JSX edit.
 
 ---
 
@@ -10,141 +15,153 @@ even though it is small.
 
 **Not** an OAuth App. A GitHub App gives per-repository installation,
 short-lived tokens, organisation admin approval, and — the reason it is
-required here — the ability to open a pull request for an editor who only
-has read access.
+required here — the ability to open a pull request for an editor who only has
+read access.
 
 <https://github.com/settings/apps> → **New GitHub App**
 
 | Field | Value |
 |-------|-------|
-| Homepage URL | your service URL |
-| Callback URL | `https://your-service/api/auth/extension-callback` |
-| Request user authorization (OAuth) during installation | **enabled** |
+| Homepage URL | your dashboard URL |
+| Callback URL | `https://your-api/api/connections/github/callback` |
+| Setup URL | the same callback, so a direct install also lands there |
+| Request user authorization (OAuth) during installation | **not required** |
 | Webhook | **disabled** |
+| Where can this be installed? | **Any account**, or customers cannot install it |
 
 Repository permissions:
 
 | Permission | Access | Why |
 |------------|--------|-----|
 | Contents | Read and write | Create branches, read and commit files |
-| Pull requests | Read and write | Open the PR |
+| Pull requests | Read and write | Open the change request |
 | Issues | Read and write | Observer mode files issues |
 | Metadata | Read-only | Implied |
 
 Then **Generate a private key** and download the `.pem`.
 
-Install the App on the repositories you want editable. Only installed
-repositories appear in the extension.
+> The old service asked an *editor* to authorise GitHub. This one does not:
+> an **admin installs the App once, in the dashboard**, and every editor in
+> that organisation then works without a GitHub account of their own. That is
+> where the first real install stalled, and why it changed.
 
 ---
 
 ## 2. Environment variables
 
-Copy `overlay/pr-service/.env.example`. Every variable is documented there;
-this is the deployment-specific commentary.
+Copy `apps/api/.env.example`. Every variable is documented there; this is the
+deployment-specific commentary.
 
 ### Required
 
 | Variable | Notes |
 |----------|-------|
+| `DATABASE_URL` | Postgres. Run `prisma migrate deploy` before first boot |
+| `CREDENTIALS_KEY` | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. Encrypts stored provider credentials at rest |
 | `GITHUB_APP_ID` | From the App's settings page |
-| `GITHUB_CLIENT_ID` | From the same page |
-| `GITHUB_CLIENT_SECRET` | Generate one; rotate if it ever leaks |
+| `GITHUB_APP_SLUG` | The last path segment of `github.com/apps/<slug>`. Used to build the install URL |
 | `GITHUB_APP_PRIVATE_KEY` | The `.pem`. Raw, with literal `\n`, or base64 — all three are accepted, because hosting UIs disagree about newlines |
-| `APP_URL` | Must exactly match the App's callback URL origin |
-| `TOKEN_SECRET` | `openssl rand -base64 32`. Encrypts stored GitHub tokens — rotating it signs everyone out |
-| `ALLOWED_EXTENSION_IDS` | Comma-separated Chrome extension IDs. **Required in production**; without it the service refuses to authenticate anyone |
+| `DASHBOARD_URL` | Where the install callback redirects back to |
 
-### Strongly recommended
+`npm run check:env` reports which of these are missing, and validates that the
+credential key is really 32 bytes and the PEM really parses.
 
-| Variable | Notes |
-|----------|-------|
-| `UPSTASH_REDIS_REST_URL` | Session store |
-| `UPSTASH_REDIS_REST_TOKEN` | |
-
-Without these, sessions live in process memory. On a serverless host that
-means **every request may hit a different instance and see no session**, so
-sign-in appears to fail at random. The service logs a warning at startup when
-running this way in production.
-
-Any Redis exposed over Upstash's HTTP API works; the client is plain `fetch`,
-with no extra dependency.
+`npm run check:github` goes further: it signs a real App JWT and asks GitHub
+who it belongs to. That is the only way to catch an App ID paired with someone
+else's key — a mismatch which otherwise surfaces as a 401 halfway through
+opening a pull request.
 
 ### Optional
 
 | Variable | Notes |
 |----------|-------|
+| `CORS_ORIGINS` | Comma-separated. Defaults to `http://localhost:4300` |
+| `PORT` | Defaults to 3333 |
 | `LOG_LEVEL` | `debug` \| `info` \| `warn` \| `error` (default `info`) |
-| `SENTRY_DSN` | Errors are forwarded when set |
+| `SENTRY_DSN` | Errors are forwarded when set; `@sentry/node` is an optional peer |
+
+### Rotating the credential key
+
+`CREDENTIALS_KEY` accepts a comma-separated list. The **first** key encrypts
+new writes; the rest only decrypt. So rotation is:
+
+1. Prepend a new key: `CREDENTIALS_KEY=new,old`
+2. Deploy. New writes use `new`; existing rows still decrypt with `old`.
+3. Once nothing references `old`, drop it.
+
+No migration re-encrypts everything at once, and there is no window where a
+credential cannot be read.
 
 ---
 
-## 3. Finding your extension ID
-
-`ALLOWED_EXTENSION_IDS` gates both the OAuth redirect target and CORS, so it
-has to be right.
-
-- **Unpacked**: `chrome://extensions` with Developer mode on — the ID is under
-  the extension name. It is derived from the directory path, so it changes if
-  you move the folder. Pin it by adding a `key` to `manifest.json`.
-- **Published**: the ID in the Web Store URL.
-
-Outside production, an unset allowlist accepts any well-formed extension ID so
-first-run setup is possible. That fallback is disabled when
-`NODE_ENV=production`.
-
----
-
-## 4. Deploy
-
-### Vercel
+## 3. Deploy
 
 ```bash
-cd overlay/pr-service
-vercel
+npm ci
+npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+npm run build:api
+node apps/api/dist/main.js        # listens on 3333
 ```
 
-Set the environment variables in the project settings. `APP_URL` must be the
-production domain, not a preview URL, or the OAuth callback will not match.
-
-### Anywhere else
+The dashboard is a separate static build:
 
 ```bash
-npm ci --prefix overlay/pr-service
-npm run build --prefix overlay/pr-service
-npm start --prefix overlay/pr-service      # listens on 3001
+npm --prefix apps/dashboard run build
 ```
-
-Node 18+.
 
 ---
 
-## 5. Verify
+## 4. Verify
 
-1. `GET /` shows the service page and its URL.
-2. Set that URL in the extension popup. Non-localhost must be `https://`.
-3. Open an annotated preview, make an edit, submit.
-4. The PR is opened by the App, with the editor credited in the body.
+1. `GET /api/health` reports `{"status":"ok","database":"up"}` — it checks
+   Postgres, not just that Node is running.
+2. Sign in to the dashboard, then **Connections → Connect GitHub**. You are
+   sent to GitHub and returned to the dashboard with the connection listed.
+3. **Register a site**: `hostname → repository → branch`.
+4. `GET /api/resolve?hostname=<that hostname>` answers with the repository and
+   branch. This is what the extension asks.
+5. Make an edit and submit. The pull request is opened by the App, with the
+   editor credited by display name in the body.
 
 ### When something goes wrong
 
 | Symptom | Cause |
 |---------|-------|
-| `ALLOWED_EXTENSION_IDS is not configured` | Set it, or you are unintentionally running with `NODE_ENV=production` |
-| `Invalid, expired or already-used state parameter` | Clock skew, or a stale callback being replayed. State nonces are single-use by design |
-| `The Inline Edit GitHub App is not installed on …` | Install the App on that repository |
-| Signed out at random | Memory session store on a multi-instance host — configure Upstash |
-| Repository missing from the picker | `/api/repos` lists only repositories the App is installed on |
-| `GITHUB_APP_PRIVATE_KEY is not a valid PEM` | The value got truncated or newline-mangled; base64 the whole file instead |
+| `CREDENTIALS_KEY is not set` at boot | Set it. The API deliberately refuses to start rather than store credentials in the clear |
+| `CREDENTIALS_KEY entry 1 is 16 bytes; AES-256 needs 32` | Generate a 32-byte key; the message names which entry |
+| `This link has expired or is not valid` on install | The signed `state` is older than ten minutes, or was signed by a different `CREDENTIALS_KEY`. Start the connection again |
+| `This connection was started by a different person` | The browser completing the install is signed in as someone else |
+| `GITHUB_APP_SLUG is not configured` | The install URL cannot be built without it |
+| `The Inline Edit GitHub App is no longer installed on …` (409) | An admin uninstalled it on GitHub's side; reconnect in the dashboard |
+| Repository missing from the picker | `/api/connections/:id/repositories` lists only repositories the installation can reach |
+| `GITHUB_APP_PRIVATE_KEY is not a valid PEM` | The value got truncated or newline-mangled; base64 the whole file, or use `npm run install:key` |
+| `No such site.` (404) from an editing endpoint | Either the environment does not exist or the caller's teams do not cover it. The two are deliberately indistinguishable |
+| A 502 from an editing endpoint | The provider is unreachable. Not a 500, because the failure is upstream |
 
 ---
 
 ## Operating notes
 
-- **Rate limits**: 20 pull requests per hour per user and per repository, 300
-  reads per hour. Adjust in `lib/rate-limit.js`.
+- **Rate limits**: 20 change requests per hour per user *and* per site, 300
+  reads, 60 searches. Configured in `apps/api/src/editing/rate-limit.ts`.
+
+  Counters are **per process**, so N instances means N times the limit. That
+  is a ceiling against a runaway client or a stolen session, not a billing
+  control. Moving `hit()` to Postgres is a change to that one function.
+
+- **Installation tokens** are cached in memory per process, expiring a minute
+  early. Several instances each mint their own, which GitHub permits and
+  which costs one extra call per instance per hour.
+
+- **Revoking a connection** clears its stored credentials and forgets any
+  cached token, so it stops working immediately rather than up to an hour
+  later. It is refused while sites still point at it.
+
 - **Logs** are one JSON object per line with a stable `event` field, so
-  `create_pr.failed` and `session.decrypt_failed` are greppable.
+  `create_pr.failed` and similar are greppable.
+
 - **User content is never logged** — edit text is deliberately excluded.
-- **Rotating `TOKEN_SECRET`** invalidates every session. Existing sessions
-  fail to decrypt, are treated as absent, and editors simply reconnect.
+
+- **Session and login-token rows grow without bound.** A session is revocable
+  precisely because it is a row. Expiring them is `P0.4a` in `TASK.md` and is
+  not yet implemented.

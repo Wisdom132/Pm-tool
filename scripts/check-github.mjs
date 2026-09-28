@@ -15,10 +15,10 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const SERVICE = resolve(here, '../overlay/pr-service');
+const API = resolve(here, '../apps/api');
 
-// Load .env.local by hand: this runs outside Next, which would normally do it.
-const raw = await readFile(resolve(SERVICE, '.env.local'), 'utf8');
+// Load .env by hand: this runs outside Nest, which would normally do it.
+const raw = await readFile(resolve(API, '.env'), 'utf8');
 for (const line of raw.split('\n')) {
   const match = /^\s*([A-Z_0-9]+)\s*=\s*(.*)$/.exec(line);
   if (match && match[2].trim() && match[2].trim() !== 'TODO') {
@@ -26,7 +26,9 @@ for (const line of raw.split('\n')) {
   }
 }
 
-const { createAppJwt } = await import(resolve(SERVICE, 'lib/github-app.js'));
+// The compiled build, so this exercises the same code the API runs —
+// including the CommonJS interop with ESM-only @babel/parser.
+const { createAppJwt } = await import(resolve(API, 'dist/providers/github/app-jwt.js'));
 
 console.log('');
 
@@ -112,4 +114,4 @@ if (!permissionsOk) {
   process.exit(1);
 }
 
-console.log('\n  Credentials are good. Start the service: npm run dev:svc\n');
+console.log('\n  Credentials are good. Start the service: npm run dev:api\n');

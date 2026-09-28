@@ -218,7 +218,7 @@ describe('annotation and codemod agree', () => {
 
   it('resolves every annotated line back through the codemod', async () => {
     const { applyHtmlEdits } = await import(
-      '../overlay/pr-service/lib/codemod/html.js'
+      '../apps/api/src/editing/codemod/html.js'
     );
 
     const annotated = annotateSource(component, FILE);

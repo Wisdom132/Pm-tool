@@ -5,7 +5,7 @@ import {
   readKey,
   setKeyInJson,
   applyLocaleEdits,
-} from '../overlay/pr-service/lib/codemod/locale.js';
+} from '../apps/api/src/editing/codemod/locale.js';
 
 const EN = `{
   "hero": {

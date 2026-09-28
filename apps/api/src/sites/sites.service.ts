@@ -80,6 +80,42 @@ export class SitesService {
   }
 
   /**
+   * May this person edit through this environment, and what does it point at?
+   *
+   * The editing endpoints all start here. It exists because the extension
+   * sends an `environmentId` and nothing else: the repository, the branch
+   * and the connection are all derived server-side, so a page cannot name a
+   * repository its editors were never granted.
+   *
+   * @throws NotFoundException when the environment does not exist *or* the
+   *         caller cannot reach it — the same answer for both, so this
+   *         cannot be used to discover other organisations' sites.
+   */
+  async authoriseEnvironment(userId: string, environmentId: string) {
+    const environment = await this.sites.findEnvironmentForUser(userId, environmentId);
+    if (!environment) throw new NotFoundException('No such site.');
+
+    const membership = await this.memberships.find(environment.organisationId, userId);
+    if (!membership) throw new NotFoundException('No such site.');
+
+    // An admin reaches every site in their organisation; an editor only
+    // what their teams cover.
+    if (membership.role !== 'admin') {
+      const reachable = await this.sites.userReachesSiteViaTeam(userId, environment.siteId);
+      if (!reachable) throw new NotFoundException('No such site.');
+    }
+
+    if (environment.connection.revokedAt) {
+      throw new BadRequestException(
+        `The provider connection for ${environment.hostname} has been revoked. ` +
+          'Reconnect it in the dashboard.',
+      );
+    }
+
+    return { environment, role: membership.role };
+  }
+
+  /**
    * What the extension asks: "this page is on staging.acme.com — what am I
    * editing?"
    *

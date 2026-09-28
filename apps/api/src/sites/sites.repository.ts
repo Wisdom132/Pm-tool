@@ -55,6 +55,25 @@ export class SitesRepository {
     });
   }
 
+  /**
+   * One environment, reachable only through the caller's own memberships.
+   *
+   * The membership join is in the query rather than a check afterwards. The
+   * alternative — fetch by id, then compare organisations in application
+   * code — is the shape that leaks a row on the one path where somebody
+   * forgets the second step, and this is the lookup the extension hits on
+   * every edit.
+   */
+  findEnvironmentForUser(userId: string, id: string) {
+    return this.prisma.siteEnvironment.findFirst({
+      where: { id, organisation: { memberships: { some: { userId } } } },
+      include: {
+        connection: true,
+        site: { select: { id: true, name: true, verifiedAt: true } },
+      },
+    });
+  }
+
   findByHostname(organisationId: string, hostname: string) {
     return this.prisma.siteEnvironment.findFirst({ where: { organisationId, hostname } });
   }

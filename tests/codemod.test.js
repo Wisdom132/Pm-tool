@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { applyEditsToFile } from '../overlay/pr-service/lib/codemod/index.js';
-import { applyJsxEdits } from '../overlay/pr-service/lib/codemod/jsx.js';
-import { applyHtmlEdits } from '../overlay/pr-service/lib/codemod/html.js';
-import { applyTextEdits } from '../overlay/pr-service/lib/codemod/text.js';
-import { chooseCandidate, MATCH } from '../overlay/pr-service/lib/codemod/locate.js';
+import { applyEditsToFile } from '../apps/api/src/editing/codemod/index.js';
+import { applyJsxEdits } from '../apps/api/src/editing/codemod/jsx.js';
+import { applyHtmlEdits } from '../apps/api/src/editing/codemod/html.js';
+import { applyTextEdits } from '../apps/api/src/editing/codemod/text.js';
+import { chooseCandidate, MATCH } from '../apps/api/src/editing/codemod/locate.js';
 
 const HERO = `export default function Hero() {
   return (

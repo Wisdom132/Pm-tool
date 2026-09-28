@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { applyEditsToFile } from '../overlay/pr-service/lib/codemod/index.js';
+import { applyEditsToFile } from '../apps/api/src/editing/codemod/index.js';
 import {
   applyStructuralEdits,
   applyHtmlStructuralEdits,
-} from '../overlay/pr-service/lib/codemod/structure.js';
+} from '../apps/api/src/editing/codemod/structure.js';
 
 const LIST = `export default function Features() {
   return (

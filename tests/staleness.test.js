@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildStalenessNote, buildPrBody } from '../overlay/pr-service/lib/patcher.js';
+import { buildStalenessNote, buildPrBody } from '../apps/api/src/editing/patcher.js';
 
 describe('buildStalenessNote', () => {
   it('says nothing when the preview matches the branch', () => {

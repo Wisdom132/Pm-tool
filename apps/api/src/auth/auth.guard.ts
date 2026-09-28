@@ -36,6 +36,7 @@ export class AuthGuard implements CanActivate {
     (request as any).session = {
       userId: session.userId,
       email: session.user.email,
+      displayName: session.user.name?.trim() || session.user.email.split('@')[0],
       sessionId: session.id,
       token,
     };

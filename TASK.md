@@ -19,10 +19,9 @@ has to be installed per organisation before anything works.
 Everything below assumes a third piece — a dashboard with tenants — and that
 assumption carries obligations the current codebase does not have:
 
-- **A real database.** `overlay/pr-service/lib/store.js` is a key/value store
-  with TTL, backed by memory or Upstash. That is right for sessions and nonces
-  and wrong for tenants, sites and connections. This is the single largest
-  lift, and everything else waits on it.
+- **A real database.** ~~`overlay/pr-service/lib/store.js` is a key/value
+  store with TTL, backed by memory or Upstash.~~ *Done: Postgres via Prisma,
+  13 models, every table organisation-scoped. The KV store is gone.*
 - **Tenant isolation.** Every query gains an organisation scope. Getting this
   wrong once leaks one customer's source into another customer's editor.
 - **Secret custody.** We would hold long-lived provider credentials for other
@@ -41,23 +40,36 @@ should be priced in before the first schema is written.
 
 The foundation. Nothing else in this file can ship without it.
 
-- [ ] **P0.1** Pick the datastore and write the schema: `organisation`, `user`,
+- [x] **P0.1** Pick the datastore and write the schema: `organisation`, `user`,
       `membership`, `connection`, `site`, `audit_event`. Postgres unless there
       is a reason not to.
-- [ ] **P0.2** Sign-up, sign-in, organisations, invitations, roles. At minimum
+- [~] **P0.2** Sign-up, sign-in, organisations, ~~invitations~~, roles. At minimum
       **admin** (connects providers, registers sites) and **editor** (opens
       pull requests). The distinction matters: an editor should never be able
       to re-point a site at a different repository.
-- [ ] **P0.3** Move the datastore behind the same interface the API already
-      uses, so `lib/store.js` stays the place sessions live and the new tables
-      are separate rather than bolted onto a KV store.
+      *Done: magic-link sign-in, sessions, organisations, `admin`/`editor`
+      enforced by `OrgGuard` and `@Roles`. **Missing: invitations.** The
+      `Invitation` model exists and first sign-in honours a pending one, but
+      nothing creates one — there is no endpoint, so a second person cannot
+      be added to an organisation except by hand in SQL.*
+- [—] **P0.3** ~~Move the datastore behind the same interface the API already
+      uses, so `lib/store.js` stays the place sessions live.~~
+      **Obsolete.** `lib/store.js` was deleted with the pr-service. Sessions
+      are rows in Postgres like everything else, and all database access is
+      behind `*.repository.ts` — there is no KV store left to bolt onto.
 - [ ] **P0.4a** Expire old rows. `session` and `login_token` grow without
       bound — a session is revocable precisely because it is a row, and that
       is the cost of the choice. A periodic `deleteMany` on `expiresAt`, or
       the same on read. Cheap now, a slow table in a year.
-- [ ] **P0.4** Audit log for every privileged action — provider connected,
+- [~] **P0.4** Audit log for every privileged action — provider connected,
       site registered, branch changed, pull request opened. This is cheap to
       add now and very expensive to reconstruct later.
+      *Written for `organisation.created`, `site.registered`,
+      `branch.changed`, `site.removed`, `connection.created`,
+      `connection.reconnected` and `connection.revoked` — each inside the
+      transaction it records. **Missing: anything that reads them.** There is
+      no `GET /audit`, so the dashboard's audit page is still mock data, and
+      `pr.opened` is not recorded at all.*
 
 ## P1 — Provider connections, off the extension
 
@@ -71,9 +83,13 @@ exactly where the first real install stalled.
       *API side done: `POST /connections/github/install-url` and the
       `/connections/github/callback` redirect. The extension still holds its
       own GitHub session until the pr-service migration lands.*
-- [ ] **P1.2** The extension authenticates to *us*, not to GitHub, and
+- [~] **P1.2** The extension authenticates to *us*, not to GitHub, and
       receives a short-lived token scoped to one site. A leaked extension
       token should not be a leaked GitHub token.
+      *API side done — `/api/editing/*` takes a platform session and never a
+      provider token, and no provider credential reaches the browser at all.
+      Still outstanding: the extension itself points at the old service, and
+      its session is long-lived rather than scoped to one site.*
 - [x] **P1.3** **Provider interface.** `RepositoryProvider` in
       `apps/api/src/providers/provider.types.ts` — twelve operations, every
       one with a caller today, and GitHub behind it in
@@ -116,6 +132,73 @@ which is not sensitive. That is why `Connection.credentials` is nullable —
 encryption is there for GitLab and Bitbucket OAuth tokens and GitHub
 Enterprise access tokens, which arrive with P1.4 and P1.5.
 
+### The pr-service migration
+
+`overlay/pr-service` is superseded. Its ten Next.js routes are six NestJS
+endpoints under `/api/editing/*`, and the 1,442 lines of codemods moved to
+`apps/api/src/editing/` unchanged — 171 tests followed them and still pass.
+
+**What changed shape, and why it had to.** The old routes took `repo` and
+`branch` from the request body. That body came from a page we do not control,
+so any editor could write to any repository their organisation's connection
+could reach — regardless of which sites their team had been granted. The
+endpoints now take an `environmentId` and derive the repository, branch and
+connection from the registered site. `SitesService.authoriseEnvironment` is
+the check, and `test/editing-access.sh` is the proof.
+
+| Old | New |
+|---|---|
+| `POST /api/create-pr` | `POST /api/editing/change-requests` |
+| `POST /api/create-issue` | `POST /api/editing/issues` |
+| `GET /api/file` | `GET /api/editing/file` |
+| `POST /api/locate` | `POST /api/editing/locate` |
+| `GET /api/branches` | `GET /api/editing/branches` |
+| `GET /api/preview-status` | `GET /api/editing/preview-status` |
+| `GET /api/repos` | `GET /api/connections/:id/repositories` |
+| `lib/github.js`, `lib/github-app.js` | `providers/github/*` behind `RepositoryProvider` |
+| `lib/withAuth.js`, `lib/sessions.js`, `lib/store.js` | platform sessions in Postgres |
+| `lib/crypto.js` | **removed, not replaced** — no provider token ever reaches the browser now |
+| `lib/oauth-state.js` | `common/signed-state.ts` |
+| `lib/rate-limit.js` | `editing/rate-limit.ts` |
+| `lib/locate-source.js` | `editing/locate.service.ts` + `locate-ranking.js` |
+| `lib/resolve-i18n.js` | `editing/i18n.service.ts` |
+| `lib/observability.js` | `common/observability.js`, called from `main.ts` |
+
+**Still to do:**
+
+- [ ] Point the extension at `/api/editing/*` and at `/api/resolve`. Until
+      then it calls routes that no longer work, so the two halves are
+      migrated but not yet joined.
+- [x] Delete `overlay/pr-service`. Done: 2,741 lines across 28 tracked files,
+      plus 252 MB of `node_modules`. Everything that pointed at it was
+      updated in the same pass — the root `dev`/`dev:svc`/`install:all`
+      scripts, the CI job, `check-env`, `check-github`, `install-app-key`,
+      `docs/DEPLOYMENT.md` and the README. `git log --follow` still reaches
+      the old code.
+      *Its `.env.local` held a working GitHub App: `GITHUB_APP_ID` and the
+      private key were migrated into `apps/api/.env`, and
+      `npm run check:github` now signs a real App JWT that GitHub accepts.
+      `GITHUB_CLIENT_ID`/`SECRET` and `TOKEN_SECRET` were for the extension's
+      own OAuth dance, which the platform removed; they are archived at
+      `~/inline-edit-pr-service.env.local.bak` rather than destroyed.*
+- [ ] Rate-limit counters are per process, so N instances means N times the
+      limit. Fine as a ceiling against a runaway client, not as a billing
+      control. `editing/rate-limit.ts` documents it; moving `hit()` to
+      Postgres is the fix.
+- [~] `github.provider.ts` and `github-app.service.ts` have no *automated*
+      tests — every method is an Octokit call, so covering them means either
+      a mock (which tests the mock) or a live App.
+      *Now verified manually against the real App migrated out of the old
+      service: `listInstallations`, `describeInstallation`,
+      `listRepositories` (178 repos, so pagination is exercised),
+      `listBranches`, `resolveRef` including the 40-char short-circuit,
+      `listPaths`, `readFile` at a branch **and at a commit**,
+      `compareCommit` for both a known and an unknown commit, `searchText`,
+      and the two refusals — a directory and a missing file both raising
+      `ProviderError('not-found')`. Writes were deliberately not exercised:
+      they would create branches and pull requests in a real repository.
+      Still to do: a recorded-fixture suite so this runs in CI.*
+
 ## P2 — Site registry
 
 `site → repository → branch`. The piece that makes the tool work on a site it
@@ -126,22 +209,62 @@ the page, stamped at build time from CI or git. When that metadata is missing
 the tool cannot tell which repository it is editing — which is what produces
 the `local/project` fallback and a source panel that gives up.
 
-- [ ] **P2.1** Register a site: hostname → connection → repository → branch.
+- [x] **P2.1** Register a site: hostname → connection → repository → branch.
       `heykara.com → iFrontida/website-revamp @ main`.
-- [ ] **P2.2** Several environments per site, because this is the normal case:
+- [x] **P2.2** Several environments per site, because this is the normal case:
       `heykara.com → main`, `staging.heykara.com → develop`,
       `*.vercel.app → the branch in the URL`. Wildcards need a defined
       precedence — most specific hostname wins.
-- [ ] **P2.3** The extension asks the dashboard "what is this page?" and gets
+- [x] **P2.3** The extension asks the dashboard "what is this page?" and gets
       back repository, branch and permissions. The build annotation becomes a
       *refinement* — it still carries the exact commit — rather than the only
       source of truth.
-- [ ] **P2.4** Warn when the registered branch and the commit stamped on the
+      *`GET /api/resolve?hostname=` answers it, and every editing endpoint
+      now takes an `environmentId` from that answer. `buildCommit` is the
+      refinement: it decides what the branch is cut from, nothing more.*
+- [~] **P2.4** Warn when the registered branch and the commit stamped on the
       page disagree. Editing a preview built from a commit that is no longer
       on the branch is how an edit silently lands in the wrong place.
+      *The API answers it — `GET /api/editing/preview-status` returns
+      `{status, aheadBy, usable}`, and `createChangeRequest` branches from
+      the build commit when it is still reachable. **Missing: the warning
+      itself**, which is extension UI.*
 - [ ] **P2.5** Verify domain ownership before a site can be registered.
       Without it, anyone can claim `heykara.com` and collect feedback meant
       for someone else.
+
+## P2.6 — Joining the halves
+
+Both ends are built and neither is connected. This is now the critical path:
+until it is done, nothing works end to end for a user.
+
+- [ ] **The extension still speaks the old protocol.** It posts to
+      `/api/create-pr` with `repo` and `branch` in the body, and
+      authenticates via `/api/auth/extension` — all three are gone. It needs
+      to call `GET /api/resolve?hostname=` once, then send `environmentId` to
+      `/api/editing/*`. `inline-edit-tool/extension/src/background.js` is
+      where the URLs live.
+- [ ] **The dashboard is 100% mock data.** Seventeen feature files import
+      `core/mock-data.ts` and **zero** use `HttpClient`. Sites and
+      connections already have real endpoints to call; the rest do not (see
+      below). Writes silently do nothing: registering a site adds no row,
+      Save on site detail discards, feedback status never changes.
+
+### APIs the dashboard needs and does not have
+
+`auth`, `sites`, `connections` and `editing` exist — 20 endpoints. These do
+not:
+
+- [ ] **Teams** — create, rename, add/remove member, grant/revoke site
+      access. The schema and the `Everyone` default team exist and
+      `authoriseEnvironment` already enforces team access, so the model is
+      proven; only the endpoints are missing.
+- [ ] **People** — list members, change a role, remove someone.
+- [ ] **Invitations** — create, list, revoke, accept. Blocks P0.2.
+- [ ] **Audit** — `GET /audit`, paginated. Blocks P0.4.
+- [ ] **Organisation settings** — rename, and the deletion obligation this
+      file opens by naming.
+- [ ] **Feedback** — the whole of P3 below.
 
 ## P3 — Feedback collector
 

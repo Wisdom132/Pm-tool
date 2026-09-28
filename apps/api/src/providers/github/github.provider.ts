@@ -20,8 +20,9 @@ export type TokenSource = () => Promise<string>;
 /**
  * GitHub behind the provider interface.
  *
- * Ported from `overlay/pr-service/lib/github.js`, with three changes that
- * the interface forced and that were latent bugs before:
+ * Ported from the former `overlay/pr-service/lib/github.js`, which has since
+ * been deleted — `git log --follow` reaches it. Three things changed, each
+ * forced by the interface and each a latent bug before:
  *
  *   - Reads take a ref, not a branch. The old code passed the branch name
  *     even when the page carried a build commit, so the source panel could

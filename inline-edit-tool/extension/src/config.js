@@ -6,7 +6,7 @@
 
 /**
  * Used only when nothing has been configured yet. A deployed team points the
- * extension at their own HTTPS pr-service via the popup.
+ * extension at their own HTTPS API deployment via the popup.
  */
 export const DEFAULT_SERVICE_URL = "http://localhost:3001";
 
@@ -18,7 +18,7 @@ export function isLoopback(hostname) {
 }
 
 /**
- * Validate a pr-service URL.
+ * Validate an API URL.
  *
  * The extension sends a bearer token to this origin on every request, so
  * plaintext HTTP is rejected for anything but loopback — a preview-deploy

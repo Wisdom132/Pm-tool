@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { applyVueEdits } from '../overlay/pr-service/lib/codemod/vue.js';
-import { applyEditsToFile } from '../overlay/pr-service/lib/codemod/index.js';
+import { applyVueEdits } from '../apps/api/src/editing/codemod/vue.js';
+import { applyEditsToFile } from '../apps/api/src/editing/codemod/index.js';
 
 const SFC = `<script setup>
 const label = 'First item';

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createPrivateKey, type KeyObject } from 'node:crypto';
-import { SignJWT } from 'jose';
+import { type KeyObject } from 'node:crypto';
 import { Octokit } from '@octokit/rest';
+import { createAppJwt, loadPrivateKey } from './app-jwt';
 import { ProviderError } from '../provider.types';
 
 /**
@@ -36,45 +36,14 @@ export class GithubAppService {
 
   private key?: KeyObject;
 
-  /**
-   * The PEM may arrive raw, with literal `\n` sequences, or base64-encoded.
-   * All three are what hosting UIs produce, and all three are common enough
-   * that rejecting two of them just produces a confusing deploy failure.
-   */
-  static normalisePrivateKey(raw: string | undefined): string {
-    if (!raw) throw new Error('GITHUB_APP_PRIVATE_KEY is not set');
-
-    let key = raw.trim();
-    if (!key.includes('BEGIN')) key = Buffer.from(key, 'base64').toString('utf8').trim();
-    if (key.includes('\\n')) key = key.replace(/\\n/g, '\n');
-    if (!key.includes('BEGIN')) throw new Error('GITHUB_APP_PRIVATE_KEY is not a valid PEM');
-
-    return key;
-  }
-
-  /**
-   * GitHub issues App keys as PKCS#1 ("BEGIN RSA PRIVATE KEY"), while jose's
-   * importPKCS8 only reads PKCS#8. Node's createPrivateKey reads both.
-   */
+  /** Parsed once; the PEM does not change while the process lives. */
   private signingKey(): KeyObject {
-    if (!this.key) {
-      this.key = createPrivateKey(GithubAppService.normalisePrivateKey(process.env.GITHUB_APP_PRIVATE_KEY));
-    }
+    if (!this.key) this.key = loadPrivateKey(process.env.GITHUB_APP_PRIVATE_KEY);
     return this.key;
   }
 
-  /** Short-lived JWT identifying the App. `iat` is backdated for clock skew. */
-  async appJwt(): Promise<string> {
-    const appId = process.env.GITHUB_APP_ID;
-    if (!appId) throw new Error('GITHUB_APP_ID is not set');
-
-    const now = Math.floor(Date.now() / 1000);
-    return new SignJWT({})
-      .setProtectedHeader({ alg: 'RS256' })
-      .setIssuer(appId)
-      .setIssuedAt(now - 60)
-      .setExpirationTime(now + 9 * 60) // GitHub rejects anything past 10 minutes
-      .sign(this.signingKey());
+  appJwt(): Promise<string> {
+    return createAppJwt(process.env, this.signingKey());
   }
 
   /** An Octokit acting as the App itself. Cannot touch repository contents. */

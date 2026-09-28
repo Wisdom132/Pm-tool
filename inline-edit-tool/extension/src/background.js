@@ -8,10 +8,10 @@ import { getSessionId, setSession } from './auth-storage.js';
 //
 //  GITHUB_AUTH — launches GitHub OAuth via chrome.identity,
 //                stores the resulting session id, returns it.
-//  API_FETCH   — proxies GET requests to the pr-service so that
+//  API_FETCH   — proxies GET requests to the API so that
 //                content scripts (which inherit the page's HTTPS
 //                context) are not blocked by mixed-content rules.
-//  CREATE_PR   — POSTs edits to the pr-service.
+//  CREATE_PR   — POSTs edits to the API.
 // ============================================================
 
 // Clicking the toolbar icon opens the side panel alongside the popup.
@@ -32,12 +32,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         // Chrome reports an unreachable start page as "Authorization page
         // could not be loaded", which says nothing about the cause. By far
-        // the most common one is that the pr-service is not running.
+        // the most common one is that the API is not running.
         const unreachable = /could not be loaded|ERR_|net::/i.test(raw);
         sendResponse({
           error: unreachable
-            ? `Could not reach the pull-request service at ${serviceUrl}. ` +
-              `Start it with "npm run dev:svc", or set a different Service URL in the extension popup.`
+            ? `Could not reach the Inline Edit API at ${serviceUrl}. ` +
+              `Start it with "npm run dev:api", or set a different Service URL in the extension popup.`
             : raw,
           serviceUrl,
           unreachable,
@@ -59,7 +59,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // async response
   }
 
-  // ── Proxy GET requests to pr-service (avoids mixed-content) ─
+  // ── Proxy GET requests to the API (avoids mixed-content) ───
   if (message.type === 'API_FETCH') {
     (async () => {
       try {
@@ -148,7 +148,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // ── Proxy POST requests to pr-service ──────────────────────
+  // ── Proxy POST requests to the API ─────────────────────────
   if (message.type === 'API_POST') {
     (async () => {
       try {
