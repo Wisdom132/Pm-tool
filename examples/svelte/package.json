@@ -1,0 +1,10 @@
+{
+  "name": "inline-edit-example-svelte",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "INLINE_EDIT=1 vite build",
+    "preview": "vite preview"
+  }
+}

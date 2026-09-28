@@ -295,3 +295,73 @@ describe('candidate ranking', () => {
     expect(chooseCandidate(candidates, { originalText: 'Nope' })).toBeNull();
   });
 });
+
+describe('Svelte components', () => {
+  const component = [
+    '<script>',
+    "  const label = '<p>not markup</p>';",
+    '  let count = 12;',
+    '</script>',
+    '',
+    '<h1>Ship it on Friday</h1>',
+    '<p class="lead">Small changes, reviewed properly.</p>',
+    '<p>{count} deploys</p>',
+    '',
+    '<style>',
+    '  p { color: red; }',
+    '</style>',
+    '',
+  ].join('\n');
+
+  it('rewrites text in the markup', () => {
+    const result = applyHtmlEdits(component, 'src/lib/Banner.svelte', [
+      { originalText: 'Ship it on Friday', newText: 'Ship it on Thursday', sourceLine: 6 },
+    ]);
+
+    expect(result.failed).toHaveLength(0);
+    expect(result.content).toContain('<h1>Ship it on Thursday</h1>');
+  });
+
+  it('never rewrites markup inside a <script> block', () => {
+    // Every Svelte component has one, so an unmasked scan would eventually
+    // treat a string literal as copy and rewrite code.
+    const result = applyHtmlEdits(component, 'src/lib/Banner.svelte', [
+      { originalText: 'not markup', newText: 'HACKED', sourceLine: 2 },
+    ]);
+
+    expect(result.applied).toHaveLength(0);
+    expect(result.content).toContain("const label = '<p>not markup</p>';");
+  });
+
+  it('leaves a css selector alone', () => {
+    const result = applyHtmlEdits(component, 'src/lib/Banner.svelte', [
+      { originalText: 'color: red', newText: 'color: blue', sourceLine: 11 },
+    ]);
+
+    expect(result.applied).toHaveLength(0);
+    expect(result.content).toContain('p { color: red; }');
+  });
+
+  it('refuses an element whose text is an expression', () => {
+    // Replacing `{count} deploys` with static text would drop a live value.
+    const result = applyHtmlEdits(component, 'src/lib/Banner.svelte', [
+      { originalText: '{count} deploys', newText: '99 deploys', sourceLine: 8 },
+    ]);
+
+    expect(result.applied).toHaveLength(0);
+    expect(result.content).toContain('<p>{count} deploys</p>');
+  });
+
+  it('routes .svelte through the HTML backend', () => {
+    const result = applyEditsToFile({
+      content: component,
+      filePath: 'src/lib/Banner.svelte',
+      edits: [
+        { originalText: 'Ship it on Friday', newText: 'Ship it on Thursday', sourceLine: 6 },
+      ],
+    });
+
+    expect(result.failed).toHaveLength(0);
+    expect(result.content).toContain('Ship it on Thursday');
+  });
+});

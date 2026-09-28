@@ -111,32 +111,43 @@ export function createUpstashStore({ url, token, fetchImpl = fetch }) {
   };
 }
 
-let _store = null;
+/**
+ * The store is pinned to globalThis, not to a module-level variable.
+ *
+ * Next bundles every API route separately, so each route gets its own copy
+ * of this module — and with it its own Map. A nonce written by
+ * /api/auth/extension was therefore invisible to
+ * /api/auth/extension-callback, and every OAuth attempt failed on an
+ * "already-used state parameter" that had in fact never been seen. A symbol
+ * on globalThis is shared by every bundle in the process.
+ */
+const STORE_KEY = Symbol.for('inline-edit.store');
 
 export function getStore() {
-  if (_store) return _store;
+  if (globalThis[STORE_KEY]) return globalThis[STORE_KEY];
 
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
   if (url && token) {
-    _store = createUpstashStore({ url, token });
+    globalThis[STORE_KEY] = createUpstashStore({ url, token });
   } else {
     if (process.env.NODE_ENV === 'production') {
       log.warn('store.memory_in_production', {
         detail:
-          'Sessions are held in process memory and will not survive a restart ' +
-          'or be shared between instances. Set UPSTASH_REDIS_REST_URL and ' +
-          'UPSTASH_REDIS_REST_TOKEN.',
+          'Sessions are held in process memory. They will not survive a ' +
+          'restart, and on a host that runs more than one instance a request ' +
+          'may land somewhere that has never seen the session. Set ' +
+          'UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN.',
       });
     }
-    _store = createMemoryStore();
+    globalThis[STORE_KEY] = createMemoryStore();
   }
 
-  return _store;
+  return globalThis[STORE_KEY];
 }
 
 /** Test seam. */
 export function setStore(store) {
-  _store = store;
+  globalThis[STORE_KEY] = store;
 }

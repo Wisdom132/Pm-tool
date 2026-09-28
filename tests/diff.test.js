@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest';
-import { diffWords, tokenize, renderDiff } from '../inline-edit-tool/extension/src/ui/diff.js';
+import { diffWords, tokenize, renderDiff, countChangedLines } from '../inline-edit-tool/extension/src/ui/diff.js';
 
 const text = (parts, type) =>
   parts.filter((p) => p.type === type).map((p) => p.value).join('');
@@ -110,5 +110,52 @@ describe('renderDiff', () => {
     cell.textContent = 'stale';
     renderDiff(cell, diffWords('a', 'b'), 'added');
     expect(cell.textContent).toBe('b');
+  });
+});
+
+describe('countChangedLines', () => {
+  it('reports nothing for an untouched file', () => {
+    const file = 'a\nb\nc\n';
+    expect(countChangedLines(file, file)).toEqual({ added: 0, removed: 0 });
+  });
+
+  it('counts a line replaced in place', () => {
+    expect(countChangedLines('a\nb\nc', 'a\nB\nc')).toEqual({ added: 1, removed: 1 });
+  });
+
+  it('counts pure insertions', () => {
+    expect(countChangedLines('a\nc', 'a\nb1\nb2\nc')).toEqual({ added: 2, removed: 0 });
+  });
+
+  it('counts pure deletions', () => {
+    expect(countChangedLines('a\nb\nc', 'a')).toEqual({ added: 0, removed: 2 });
+  });
+
+  it('does not charge for lines that merely moved down', () => {
+    // Inserting at the top shifts every following line. A naive positional
+    // comparison would call the whole file changed.
+    const before = Array.from({ length: 50 }, (_, i) => `line ${i}`).join('\n');
+    const after = `header\n${before}`;
+    expect(countChangedLines(before, after)).toEqual({ added: 1, removed: 0 });
+  });
+
+  it('handles edits scattered through the file', () => {
+    const before = ['a', 'b', 'c', 'd', 'e'].join('\n');
+    const after = ['a', 'B', 'c', 'd', 'E'].join('\n');
+    expect(countChangedLines(before, after)).toEqual({ added: 2, removed: 2 });
+  });
+
+  it('treats an emptied file as every line removed', () => {
+    expect(countChangedLines('a\nb\nc', '')).toEqual({ added: 0, removed: 3 });
+  });
+
+  it('stays fast on a large rewrite', () => {
+    // Beyond the table limit it reports the block wholesale rather than
+    // spending a quadratic diff on a file nobody will read line by line.
+    const before = Array.from({ length: 4000 }, (_, i) => `x${i}`).join('\n');
+    const after = Array.from({ length: 4000 }, (_, i) => `y${i}`).join('\n');
+    const started = Date.now();
+    expect(countChangedLines(before, after)).toEqual({ added: 4000, removed: 4000 });
+    expect(Date.now() - started).toBeLessThan(1000);
   });
 });

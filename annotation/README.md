@@ -66,6 +66,23 @@ import inlineEdit from '@quartalyst/inline-edit-annotation/vue';
 export default { plugins: [vue(), inlineEdit()] };
 ```
 
+### Svelte / SvelteKit
+
+```js
+import inlineEdit from '@quartalyst/inline-edit-annotation/svelte';
+
+export default { plugins: [inlineEdit(), sveltekit()] };
+```
+
+Order matters: the Svelte compiler turns a component into JavaScript, so the
+plugin has to see the file first. It runs `enforce: 'pre'` for that reason.
+
+Unlike the Vue plugin this has no peer dependency — it scans the markup
+itself. `svelte/compiler` changed its AST between Svelte 4 (`html`,
+`Element`) and 5 (`fragment`, `RegularElement`), and a plugin that silently
+stops annotating on a major upgrade is worse than one that never depended on
+the version at all.
+
 ### Angular
 
 Requires `@angular-builders/custom-webpack`. In `angular.json`:
@@ -96,6 +113,10 @@ Override with `INLINE_EDIT_BRANCH`, `INLINE_EDIT_COMMIT`, `INLINE_EDIT_REPO`.
 Text-bearing HTML elements — `p`, `h1`–`h6`, `span`, `a`, `button`, `label`,
 `li`, `td`, `th`, `strong`, `em`, `small`, `b`, `i` — that contain literal
 text rather than an interpolation.
+
+`<script>` and `<style>` bodies are blanked before scanning, so a `<p>` in a
+string literal or a `p { }` selector is never mistaken for markup. This
+matters most for Svelte, where every component has a script block.
 
 Deliberately skipped:
 

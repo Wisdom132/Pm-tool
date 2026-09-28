@@ -43,3 +43,29 @@ describe('findTemplateContentOffset', () => {
     expect(code.slice(offset, offset + 5)).toBe('HELLO');
   });
 });
+
+describe('templateContentOffset', () => {
+  const { templateContentOffset } = vuePlugin;
+
+  it('takes the offset as given when it already points at the content', () => {
+    // Current @vue/compiler-sfc reports the block's content start. Scanning
+    // forward from there finds the first child's '>' and shifts every
+    // insertion past it — which split `{{ label.length }}` in half and broke
+    // the build. The examples/vue build test is what caught it.
+    const code = '<template>\n  <section class="banner">\n    <h1>Hi</h1>\n  </section>\n</template>';
+    const contentStart = code.indexOf('>') + 1;
+
+    expect(templateContentOffset(code, contentStart)).toBe(contentStart);
+  });
+
+  it('still scans when the offset points at the tag', () => {
+    // Older versions reported the `<template` tag itself.
+    const code = '<template>\n  <h1>Hi</h1>\n</template>';
+    expect(templateContentOffset(code, 0)).toBe(code.indexOf('>') + 1);
+  });
+
+  it('handles attributes on the template tag', () => {
+    const code = '<template lang="html">\n  <h1>Hi</h1>\n</template>';
+    expect(templateContentOffset(code, 0)).toBe(code.indexOf('>') + 1);
+  });
+});

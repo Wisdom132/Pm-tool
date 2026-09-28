@@ -52,6 +52,21 @@ const BASE = {
   loader:   { '.css': 'text' },
 };
 
+/**
+ * The CodeMirror chunk, built separately.
+ *
+ * It is injected on demand rather than imported, so it gets its own entry.
+ * Minified because it is vendor code — there is nothing here anyone will
+ * step through, and it is by far the largest thing shipped.
+ */
+async function buildCodeEditor() {
+  await esbuild.build({
+    ...BASE,
+    entryPoints: { 'code-editor': 'src/code-editor/editor.js' },
+    minify: true,
+  });
+}
+
 async function build() {
   if (!WATCH) cleanOutDir();
   copyStatics();
@@ -60,10 +75,10 @@ async function build() {
     const ctx = await esbuild.context({
       ...BASE,
       entryPoints: {
-        content:    'src/content.js',
-        background: 'src/background.js',
-        popup:      'src/popup.js',
-        sidepanel:  'src/sidepanel.js',
+        content:     'src/content.js',
+        background:  'src/background.js',
+        popup:       'src/popup.js',
+        sidepanel:   'src/sidepanel.js',
       },
       // Rebuild statics on each change too
       plugins: [
@@ -82,13 +97,15 @@ async function build() {
     await esbuild.build({
       ...BASE,
       entryPoints: {
-        content:    'src/content.js',
-        background: 'src/background.js',
-        popup:      'src/popup.js',
-        sidepanel:  'src/sidepanel.js',
+        content:     'src/content.js',
+        background:  'src/background.js',
+        popup:       'src/popup.js',
+        sidepanel:   'src/sidepanel.js',
       },
       minify: false,
     });
+
+    await buildCodeEditor();
 
     console.log('[inline-edit-tool] Build complete \u2192 dist/');
   }

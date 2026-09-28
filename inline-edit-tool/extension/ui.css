@@ -604,6 +604,29 @@
   color: #14532d;
 }
 
+/* A whole file staged from the source panel, which has no phrase to diff. */
+#__iet-edits-table td.__iet-whole-file {
+  color: #52525b;
+}
+
+.__iet-whole-file-label {
+  font-style: italic;
+}
+
+.__iet-lines-added,
+.__iet-lines-removed {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.__iet-lines-added {
+  color: #15803d;
+}
+
+.__iet-lines-removed {
+  color: #b91c1c;
+}
+
 /* Locate: finding a source file for unannotated text */
 .__iet-locate-btn {
   padding: 3px 8px;
@@ -1232,4 +1255,258 @@
   padding-left: 6px;
   border-left: 1px solid var(--iet-line);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ============================================================
+   Source panel — the file an element came from
+   ============================================================ */
+#__iet-source-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  /* Barely a veil, and no blur: edits made in the editor show up on the page
+     above, so the page has to stay readable rather than being pushed back. */
+  background: rgba(9, 9, 11, 0.08);
+}
+
+/* Anchored to the bottom so the page stays visible above it — the point is
+   to edit source *in context*, not to replace the page with an editor. */
+#__iet-source-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 100%);
+  height: min(62vh, 680px);
+  background: #141416;
+  border: 1px solid var(--iet-line);
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: __iet-slide-up 0.18s ease-out;
+}
+
+@keyframes __iet-slide-up {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.__iet-source-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--iet-line);
+}
+
+/* Tabs: the component's file and the stylesheets it imports. */
+.__iet-source-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.__iet-source-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.__iet-source-tab {
+  flex: 0 0 auto;
+  padding: 5px 11px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #71717a;
+  font: 600 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.__iet-source-tab:hover {
+  color: #d4d4d8;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.__iet-source-tab[aria-selected="true"] {
+  color: #fafafa;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* A dot rather than a word: the tab is already narrow. */
+.__iet-tab-dirty::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: #ec4899;
+  vertical-align: middle;
+}
+
+/* A tab with no file behind it says why, rather than showing an empty box. */
+.__iet-source-note {
+  display: block;
+  padding: 28px 30px;
+  overflow: auto;
+  color: #a1a1aa;
+}
+
+.__iet-source-note strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #fafafa;
+  font-size: 13px;
+}
+
+.__iet-source-note p {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.__iet-source-note-classes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 16px;
+}
+
+.__iet-source-note-classes code {
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #fcd34d;
+  font: 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.__iet-source-warn {
+  margin-right: auto;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.__iet-source-path {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--iet-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.__iet-source-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--iet-dim);
+}
+
+.__iet-source-close {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--iet-muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.__iet-source-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--iet-text);
+}
+
+.__iet-source-body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.__iet-source-editor {
+  position: absolute;
+  inset: 0;
+}
+
+.__iet-source-status {
+  padding: 22px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--iet-muted);
+}
+
+.__iet-source-status[data-tone='error'] {
+  color: var(--iet-warn);
+}
+
+.__iet-source-footer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--iet-line);
+}
+
+.__iet-source-hint {
+  flex: 1;
+  font-size: 11.5px;
+  color: var(--iet-dim);
+}
+
+.__iet-source-btn {
+  padding: 7px 14px;
+  border: 1px solid var(--iet-line);
+  border-radius: 7px;
+  background: var(--iet-raised);
+  color: var(--iet-text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.__iet-source-btn:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.__iet-source-primary {
+  background: var(--iet-accent);
+  border-color: var(--iet-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.__iet-source-primary:hover:not(:disabled) {
+  background: var(--iet-accent-deep);
+  border-color: var(--iet-accent-deep);
+}
+
+.__iet-source-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

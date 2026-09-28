@@ -22,6 +22,7 @@ import { createLabelLayer, createInspectorCard } from "./ui/labels.js";
 import { createGuideLayer } from "./ui/guides.js";
 import { createPropertiesPanel } from "./ui/properties.js";
 import { createStructureBar } from "./ui/structure-bar.js";
+import { openSourcePanel, sourceRefFor } from "./ui/source-panel.js";
 import { BREAKPOINTS, activeBreakpoint, windowSizeFor } from "./ui/viewport.js";
 import {
   EDITABLE_SELECTOR,
@@ -60,6 +61,7 @@ let inspector = null;
 let guides = null;
 let properties = null;
 let structureBar = null;
+let sourcePanel = null;
 let crumbsEl = null;
 
 let activeTool = null;
@@ -377,6 +379,7 @@ function teardownInteraction() {
   inspector.hide();
   properties.hide();
   structureBar.hide();
+  sourcePanel?.close();
   hideCrumbs();
 
   autoDetectMode = false;
@@ -425,6 +428,10 @@ function reapplyPendingEdits() {
 
   observer?.pause();
   for (const el of editableEls) {
+    // The source panel is showing this element's file. What the editor says
+    // is newer than any edit made to the element on its own.
+    if (previewOwned.has(el)) continue;
+
     const edit = session.get(editKey(el));
     if (!edit) continue;
     if (el.innerText.trim() !== edit.newText) el.innerText = edit.newText;
@@ -550,6 +557,18 @@ function onDocumentClick(e) {
   // click-driven controls silently do nothing while keyboard-driven ones
   // worked.
   if (isOwnUi(e.target)) return;
+
+  // Alt-click opens the source, whatever tool happens to be active: the
+  // gesture is the mode, so a developer never has to go and select one.
+  if (e.altKey) {
+    const target = e.target?.closest?.("[data-edit-file]");
+    if (target) {
+      e.preventDefault();
+      e.stopPropagation();
+      showSourcePanel(target);
+      return;
+    }
+  }
 
   const el = editableFrom(e.target);
   if (!el) {
@@ -1053,6 +1072,31 @@ function redo() {
   toast.show("Redone", { tone: "info", duration: 1400 });
 }
 
+/**
+ * Is the keystroke going somewhere text is being typed?
+ *
+ * Our shadow root is *closed*, so composedPath() stops at the host and can
+ * never name a node inside it — a document-level listener simply cannot see
+ * that our class input or the code editor has focus. root.activeElement can,
+ * and this module owns root, so ask it directly.
+ */
+function isTypingTarget(e) {
+  const inner = root?.activeElement;
+  if (
+    inner?.isContentEditable ||
+    /^(INPUT|TEXTAREA|SELECT)$/.test(inner?.tagName || "")
+  ) {
+    return true;
+  }
+
+  // Inputs on the page itself are not retargeted, so e.target is accurate.
+  const outer = e.target;
+  return Boolean(
+    outer?.isContentEditable ||
+      /^(INPUT|TEXTAREA|SELECT)$/.test(outer?.tagName || "")
+  );
+}
+
 function onKeydown(e) {
   if (!rail?.visible) return;
 
@@ -1071,22 +1115,311 @@ function onKeydown(e) {
   // Single-key tool switching, but never while typing.
   if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-  // An open editor takes every plain keystroke — otherwise typing "edit"
-  // would switch tools halfway through the word.
-  if (activeOverlay) return;
+  // An open editor or source panel takes every plain keystroke — otherwise
+  // typing "edit" would switch tools halfway through the word.
+  if (activeOverlay || sourcePanel) return;
 
-  // e.target is retargeted to the shadow host for events inside the shadow
-  // root, so ask composedPath for the node actually focused.
-  const target = e.composedPath?.()[0] || e.target;
-  if (
-    target?.isContentEditable ||
-    /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName || "")
-  ) {
-    return;
-  }
+  if (isTypingTarget(e)) return;
 
   if (e.key === "i") rail.selectTool(activeTool === TOOL.INSPECT ? null : TOOL.INSPECT);
   if (e.key === "e") rail.selectTool(activeTool === TOOL.EDIT ? null : TOOL.EDIT);
+}
+
+// ============================================================
+//  Source editing
+// ============================================================
+/**
+ * Open the file an element came from.
+ *
+ * Available on any annotated element, not only editable ones — a developer
+ * may well want the source of something a writer can never touch.
+ */
+async function showSourcePanel(el) {
+  if (sourcePanel) return;
+
+  if (!sourceRefFor(el)) {
+    toast.show("This element has no build annotation, so there is no file to open.", {
+      tone: "warn",
+      duration: 4500,
+    });
+    return;
+  }
+
+  cancelActiveEditor();
+  properties.hide();
+  structureBar.hide();
+
+
+  sourcePanel = await openSourcePanel({
+    root,
+    element: el,
+    ctx: resolvePageContext({
+      dataset: document.documentElement.dataset,
+      hostname: window.location.hostname,
+    }),
+    onStage: stageSourceEdit,
+    onPreview: previewSourceFile,
+    onRevert: revertSourcePreview,
+    onClose: () => {
+      sourcePanel = null;
+    },
+  });
+}
+
+// ============================================================
+//  Live preview of a source edit
+//
+//  An annotated element *is* a line in a file, so an edit to
+//  that line can be shown on the page without a rebuild. This
+//  is a preview, not a render: what the parser can state as
+//  fact is applied, and nothing else. Logic, new elements and
+//  {expressions} need a build, and are left alone rather than
+//  approximated.
+// ============================================================
+
+/** Original text and attributes of everything the preview has touched. */
+let previewOriginals = new Map();
+
+/**
+ * Elements the source preview has actually changed.
+ *
+ * While the panel is open these belong to the file, not to the session: a
+ * re-render must not put an element-level edit back over what the editor
+ * currently says.
+ */
+let previewOwned = new Set();
+
+/** The outline entry for an element, disambiguated by column when needed. */
+function outlineEntryFor(candidates, el) {
+  if (!candidates || candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  // Two elements opening on one line. The annotation's column is the only
+  // thing that separates them, and indentation may have shifted, so take
+  // the nearest rather than requiring an exact match.
+  const col = parseInt(el.dataset.editCol, 10);
+  if (!Number.isFinite(col)) return candidates[0];
+
+  return candidates.reduce((best, c) =>
+    Math.abs(c.column - col) < Math.abs(best.column - col) ? c : best
+  );
+}
+
+function rememberOriginal(el) {
+  if (previewOriginals.has(el)) return;
+  previewOriginals.set(el, {
+    text: el.textContent,
+    className: el.getAttribute("class"),
+    attributes: new Map(
+      [...el.attributes].map((a) => [a.name, a.value])
+    ),
+  });
+}
+
+/**
+ * Show an edited file on the page.
+ *
+ * Markup and stylesheets need opposite treatment. A stylesheet can be applied
+ * exactly — it is declarative, and the browser already knows how to run it.
+ * Markup cannot: without a build, only what the parser can state outright
+ * about each annotated element is safe to apply.
+ *
+ * @param {string} path
+ * @param {{kind: 'markup', outline: Map}|{kind: 'style', css: string}} change
+ */
+function previewSourceFile(path, change) {
+  if (change.kind === "style") {
+    previewStylesheet(path, change.css);
+    return 1;
+  }
+  return previewMarkup(path, change.outline);
+}
+
+/**
+ * Apply an edited file to every element on the page that came from it.
+ *
+ * @param {string} sourceFile
+ * @param {Map<number, object[]>} outline  by line, from the editor
+ */
+function previewMarkup(sourceFile, outline) {
+  const selector = `[data-edit-file="${CSS.escape(sourceFile)}"][data-edit-line]`;
+  let changed = 0;
+
+  for (const el of document.querySelectorAll(selector)) {
+    if (isOwnUi(el)) continue;
+
+    const line = parseInt(el.dataset.editLine, 10);
+    const entry = outlineEntryFor(outline.get(line), el);
+    if (!entry) continue;
+
+    rememberOriginal(el);
+    let touched = false;
+
+    // Text only where the source element holds text alone. An element with
+    // children of its own keeps them — including any that are themselves
+    // annotated and previewed on their own line.
+    if (entry.text !== null && !el.firstElementChild) {
+      if (el.textContent.trim() !== entry.text) {
+        el.textContent = entry.text;
+        touched = true;
+      }
+    }
+
+    for (const [name, value] of Object.entries(entry.attributes)) {
+      const domName = name === "className" ? "class" : name;
+      if (el.getAttribute(domName) === value) continue;
+      // Goes through the shared setter so our decoration classes survive.
+      setAttributeValue(el, domName, value);
+      touched = true;
+    }
+
+    if (touched) {
+      el.classList.add(CLS.dirty);
+      previewOwned.add(el);
+      changed++;
+    }
+  }
+
+  return changed;
+}
+
+// ---- Stylesheets -------------------------------------------
+/** Our injected <style> per previewed path. */
+const previewStyles = new Map();
+/** Link/style elements we switched off so the edit could take effect. */
+const disabledSheets = new Set();
+
+/**
+ * Is this stylesheet the built form of the file being edited?
+ *
+ * A preview deploy serves hashed, often bundled CSS, so this can only ever
+ * be a guess — and it is used solely to switch a sheet off, which the revert
+ * undoes. Matching on the file's own name keeps the guess narrow.
+ */
+function isBuiltFrom(node, path) {
+  const base = path.split("/").pop().replace(/\.\w+$/, "");
+  const href = node.getAttribute?.("href") || "";
+  return href.includes(base);
+}
+
+/**
+ * Show edited CSS on the page.
+ *
+ * The edited file is appended last so its rules win at equal specificity.
+ * Where the original sheet can be identified it is switched off as well, so
+ * that *removing* a rule takes effect too — appending alone could only ever
+ * add and override.
+ */
+function previewStylesheet(path, cssText) {
+  let tag = previewStyles.get(path);
+
+  if (!tag) {
+    tag = document.createElement("style");
+    tag.dataset.ietStylePreview = path;
+    previewStyles.set(path, tag);
+
+    for (const node of document.querySelectorAll("link[rel~=stylesheet], style")) {
+      if (node === tag || isOwnUi(node)) continue;
+      if (!isBuiltFrom(node, path)) continue;
+      if (node.sheet) {
+        node.sheet.disabled = true;
+        disabledSheets.add(node);
+      }
+    }
+  }
+
+  if (tag.textContent !== cssText) tag.textContent = cssText;
+  // Always last, so a later-loading sheet cannot end up on top of the edit.
+  document.head.appendChild(tag);
+}
+
+function revertStylePreview() {
+  for (const tag of previewStyles.values()) tag.remove();
+  previewStyles.clear();
+
+  for (const node of disabledSheets) {
+    if (node.sheet) node.sheet.disabled = false;
+  }
+  disabledSheets.clear();
+}
+
+/** Put the page back the way it was before the panel opened. */
+function revertSourcePreview() {
+  revertStylePreview();
+
+  for (const [el, original] of previewOriginals) {
+    if (!el.isConnected) continue;
+
+    if (el.textContent !== original.text && !el.firstElementChild) {
+      el.textContent = original.text;
+    }
+
+    for (const [name, value] of original.attributes) {
+      if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+    }
+    // An attribute the edit introduced has no original to restore.
+    for (const attr of [...el.attributes]) {
+      if (!original.attributes.has(attr.name)) el.removeAttribute(attr.name);
+    }
+    if (original.className !== null) el.setAttribute("class", original.className);
+  }
+
+  previewOriginals = new Map();
+  previewOwned = new Set();
+  scanAndDecorate();
+}
+
+/**
+ * Record a whole-file change.
+ *
+ * Keyed by path rather than by element: two edits to the same file through
+ * this panel are the same edit, and the last one wins.
+ */
+function stageSourceEdit(files) {
+  // An element edited with another tool and then rewritten here would be
+  // committed twice: the file lands first, then the element's codemod runs
+  // on top of it and quietly undoes what was typed in the editor. The source
+  // edit is the later and more specific of the two, so it supersedes them.
+  let superseded = 0;
+  for (const el of previewOwned) {
+    if (session.remove(editKey(el))) superseded++;
+  }
+
+  // The preview is now represented by these edits, so there is nothing left
+  // to revert — and a stale original must not survive to be restored later.
+  previewOriginals = new Map();
+  previewOwned = new Set();
+
+  for (const { sourceFile, content, baseSha, sourceLine, linesChanged } of files) {
+    session.record({
+      key: `file:${sourceFile}`,
+      pageUrl: window.location.href,
+      sourceFile,
+      sourceLine,
+      kind: "file",
+      fileContent: content,
+      baseSha,
+      linesChanged,
+      originalText: sourceFile,
+      originalRaw: sourceFile,
+      newText: `edited ${sourceFile.split("/").pop()}`,
+    });
+  }
+
+  syncRail();
+  persistSession();
+
+  const what =
+    files.length === 1
+      ? files[0].sourceFile.split("/").pop()
+      : `${files.length} files`;
+  const replaced = superseded
+    ? ` \u00b7 replaced ${superseded} element edit${superseded === 1 ? "" : "s"}`
+    : "";
+  toast.show(`${what} staged \u2014 review before submitting${replaced}`, {
+    tone: "done",
+    duration: superseded ? 5000 : 3000,
+  });
 }
 
 // ============================================================

@@ -7,19 +7,34 @@
     "dev:ext": "cd inline-edit-tool/extension && node build.js --watch",
     "dev:svc": "npm --prefix overlay/pr-service run dev",
     "build:ext": "cd inline-edit-tool/extension && node build.js",
-    "preview":   "npm run build:ext && node scripts/serve-preview.mjs",
+    "preview": "npm run build:ext && node scripts/serve-preview.mjs",
     "install:all": "npm install --prefix inline-edit-tool/extension && npm install --prefix overlay/pr-service",
     "test": "vitest run",
+    "test:examples": "vitest run tests/annotation-build.test.js",
+    "example:react": "INLINE_EDIT=1 vite --config examples/react/vite.config.js examples/react",
+    "example:vue": "INLINE_EDIT=1 vite --config examples/vue/vite.config.js examples/vue",
+    "example:svelte": "INLINE_EDIT=1 vite --config examples/svelte/vite.config.js examples/svelte",
     "test:watch": "vitest",
-    "test:e2e":   "vitest run --config vitest.e2e.config.js",
-    "check:no-annotations": "node scripts/check-no-annotations.mjs"
+    "test:e2e": "vitest run --config vitest.e2e.config.js",
+    "check:no-annotations": "node scripts/check-no-annotations.mjs",
+    "check:ext": "npm run build:ext && node scripts/check-extension.mjs",
+    "check:env": "node scripts/check-env.mjs",
+    "install:key": "node scripts/install-app-key.mjs",
+    "check:github": "node scripts/check-github.mjs"
   },
   "devDependencies": {
     "@babel/core": "^8.0.6",
     "@babel/plugin-syntax-jsx": "^8.0.1",
+    "@sveltejs/vite-plugin-svelte": "^4.0.4",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@vitejs/plugin-vue": "^5.2.4",
     "concurrently": "^8.0.0",
     "happy-dom": "^20.14.5",
     "playwright": "^1.63.0",
-    "vitest": "^2.1.0"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "svelte": "^5.57.1",
+    "vitest": "^2.1.0",
+    "vue": "^3.5.43"
   }
 }

@@ -16,16 +16,34 @@ const TEXT_TAGS = [
   'strong', 'em', 'small', 'b', 'i',
 ];
 
+/**
+ * Blank out <script> and <style> bodies, keeping every offset and line.
+ *
+ * Their contents are JavaScript and CSS, where a `<p>` in a string literal or
+ * a `p { }` selector is not markup. Every Svelte component has a script
+ * block, so scanning one unmasked would eventually rewrite code as if it
+ * were copy. Offsets are preserved so ranges still apply to the real source.
+ */
+function maskBlocks(source) {
+  return source.replace(
+    /(<(script|style)\b[^>]*>)([\s\S]*?)(<\/\2>)/gi,
+    (all, open, name, body, close) => open + body.replace(/[^\n]/g, ' ') + close
+  );
+}
+
 /** Elements whose content is purely text, so it can be replaced wholesale. */
-function collectTextNodes(source) {
+function collectTextNodes(rawSource) {
   const found = [];
+  const source = maskBlocks(rawSource);
 
   for (const range of findElements(source, TEXT_TAGS)) {
     if (range.selfClosing) continue;
 
     const inner = source.slice(range.innerStart, range.innerEnd);
     // Markup or an interpolation inside means rewriting would destroy it.
-    if (/[<>]/.test(inner) || /\{\{/.test(inner)) continue;
+    // Angular and Vue use `{{ }}`; Svelte uses a single brace, and losing a
+    // `{count}` would replace a rendered value with static text.
+    if (/[<>]/.test(inner) || /\{/.test(inner)) continue;
     if (!inner.trim()) continue;
 
     found.push({
@@ -40,8 +58,9 @@ function collectTextNodes(source) {
 }
 
 /** Attribute values on any element, not just text-bearing ones. */
-function collectAttributes(source) {
+function collectAttributes(rawSource) {
   const found = [];
+  const source = maskBlocks(rawSource);
   const tagRe = /<([a-zA-Z][\w-]*)((?:\s+[^\s=>]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*)\s*\/?>/g;
   let tag;
 

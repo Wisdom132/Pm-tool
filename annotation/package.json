@@ -1,7 +1,7 @@
 {
   "name": "@quartalyst/inline-edit-annotation",
   "version": "1.0.0",
-  "description": "Build-time annotation plugins for the Inline Edit Tool — stamp source locations onto the DOM so rendered text can be traced back to the file it came from (React, Vue, Angular)",
+  "description": "Build-time annotation plugins for the Inline Edit Tool — stamp source locations onto the DOM so rendered text can be traced back to the file it came from (React, Vue, Svelte, Angular)",
   "license": "MIT",
   "keywords": [
     "inline-edit",
@@ -16,6 +16,7 @@
   "exports": {
     "./react": "./react/index.js",
     "./vue": "./vue/index.js",
+    "./svelte": "./svelte/index.js",
     "./angular": "./angular/index.js",
     "./angular/webpack-config": "./angular/webpack.config.js",
     "./angular/loader": "./angular/template-loader.js",
@@ -24,6 +25,7 @@
   "files": [
     "react",
     "vue",
+    "svelte",
     "angular",
     "lib",
     "README.md"

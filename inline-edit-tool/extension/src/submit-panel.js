@@ -79,7 +79,7 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
     const warn = document.createElement("p");
     warn.id = `${P}-source-warn`;
     warn.textContent =
-      "ℹ️ No annotation plugin detected — source files will be located automatically via GitHub code search. Works best for unique text strings.";
+      "ℹ️ This page has no build annotation, so these edits cannot be traced to a source file automatically. Use Locate on a row to confirm where its text lives, or file them all as an issue.";
     card.appendChild(warn);
   }
 
@@ -115,6 +115,20 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
     fileCell.textContent = fname ? `${fname}${lineN}` : "—";
     if (!fname) fileCell.style.color = "#d1d5db";
 
+    // A file edited in the source panel replaces the whole file, so there is
+    // no before/after phrase to mark up — the shape of the change is the
+    // count. Rendering it as a text diff would show the path against a
+    // placeholder, which reads like a bug.
+    if (edit.kind === "file") {
+      fileCell.textContent = edit.sourceFile;
+      fileCell.title = edit.sourceFile;
+      const cell = row.insertCell();
+      cell.colSpan = 2;
+      cell.className = `${P}-whole-file`;
+      cell.append(...describeLineChange(edit.linesChanged));
+      continue;
+    }
+
     // Mark the words that actually changed, rather than leaving the reader
     // to compare two full sentences.
     const parts = diffWords(edit.originalText, edit.newText);
@@ -122,6 +136,41 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
     renderDiff(row.insertCell(), parts, "added");
   }
   card.appendChild(table);
+
+  /**
+   * "Edited in the browser · +4 −1", as nodes so the counts can be coloured.
+   *
+   * An older session may predate the counts, so absence is expected rather
+   * than exceptional — say what happened and leave the numbers out.
+   */
+  function describeLineChange(linesChanged) {
+    const label = document.createElement("span");
+    label.className = `${P}-whole-file-label`;
+    label.textContent = "Edited in the browser";
+
+    const { added = 0, removed = 0 } = linesChanged || {};
+    if (!added && !removed) return [label];
+
+    const nodes = [label, document.createTextNode(" · ")];
+
+    if (added) {
+      const el = document.createElement("span");
+      el.className = `${P}-lines-added`;
+      el.textContent = `+${added}`;
+      nodes.push(el);
+    }
+    if (added && removed) nodes.push(document.createTextNode(" "));
+    if (removed) {
+      const el = document.createElement("span");
+      el.className = `${P}-lines-removed`;
+      el.textContent = `−${removed}`;
+      nodes.push(el);
+    }
+
+    const unit = added + removed === 1 ? "line" : "lines";
+    nodes.push(document.createTextNode(` ${unit}`));
+    return nodes;
+  }
 
   /**
    * The file column: a resolved path, or a way to find one.
@@ -325,7 +374,16 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
   confirmBtn.disabled = true;
   confirmBtn.addEventListener("click", () => submit());
 
+  // Always available, and the only route when nothing is annotated.
+  const issueBtn = document.createElement("button");
+  issueBtn.id = `${P}-panel-issue`;
+  issueBtn.type = "button";
+  issueBtn.textContent = "File as issue";
+  issueBtn.disabled = true;
+  issueBtn.addEventListener("click", () => submitIssue());
+
   btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(issueBtn);
   btnRow.appendChild(confirmBtn);
   card.appendChild(btnRow);
 
@@ -372,11 +430,31 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
     connStatus.textContent = `✓ Connected${login ? ` as @${login}` : ""} — ${list.length} repo${list.length === 1 ? "" : "s"}`;
     connStatus.style.color = "#16a34a";
 
+    // Group by owner. A flat list is fine for one account, but as soon as an
+    // organisation is installed it becomes dozens of near-identical rows all
+    // prefixed with the same name.
+    const byOwner = new Map();
     for (const r of list) {
-      const opt = document.createElement("option");
-      opt.value = r.full_name;
-      opt.textContent = r.full_name + (r.private ? " 🔒" : "");
-      repo.sel.appendChild(opt);
+      const owner = r.full_name.split("/")[0];
+      if (!byOwner.has(owner)) byOwner.set(owner, []);
+      byOwner.get(owner).push(r);
+    }
+
+    for (const owner of [...byOwner.keys()].sort((a, b) => a.localeCompare(b))) {
+      const group = document.createElement("optgroup");
+      group.label = owner;
+
+      const owned = byOwner.get(owner).sort((a, b) => a.full_name.localeCompare(b.full_name));
+
+      for (const r of owned) {
+        const opt = document.createElement("option");
+        opt.value = r.full_name;
+        // The group already names the owner, so only the repo is shown.
+        opt.textContent = r.full_name.slice(owner.length + 1) + (r.private ? " \uD83D\uDD12" : "");
+        group.appendChild(opt);
+      }
+
+      repo.sel.appendChild(group);
     }
 
     step1.style.display = "none";

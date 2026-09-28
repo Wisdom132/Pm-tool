@@ -1,0 +1,13 @@
+{
+  "architect": {
+    "build": {
+      "builder": "@angular-builders/custom-webpack:browser",
+      "options": {
+        "customWebpackConfig": {
+          "path": "./node_modules/@quartalyst/inline-edit-annotation/angular/webpack.config.js",
+          "mergeStrategies": { "module.rules": "prepend" }
+        }
+      }
+    }
+  }
+}

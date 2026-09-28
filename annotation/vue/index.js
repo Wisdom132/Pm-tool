@@ -98,8 +98,27 @@ function collectMutations(node, filePath, mutations, templateContentOffset, line
 }
 
 /**
- * Find the offset in `code` where the template block content starts
- * (i.e., right after the closing '>' of the <template ...> opening tag).
+ * Where the template block's content starts.
+ *
+ * @vue/compiler-sfc changed what `template.loc.start.offset` points at:
+ * current versions report the block's *content*, older ones reported the
+ * `<template` tag itself. Scanning unconditionally, as this used to, shifted
+ * every insertion past the first child element — attributes landed in the
+ * middle of the next tag's text, splitting `{{ label.length }}` in half and
+ * failing the build.
+ *
+ * Which convention is in play is visible in the source, so ask it rather
+ * than pin a version.
+ */
+function templateContentOffset(code, blockStartOffset) {
+  if (code.startsWith('<template', blockStartOffset)) {
+    return findTemplateContentOffset(code, blockStartOffset);
+  }
+  return blockStartOffset;
+}
+
+/**
+ * Scan past the closing '>' of an opening tag at `blockStartOffset`.
  */
 function findTemplateContentOffset(code, blockStartOffset) {
   let i = blockStartOffset;
@@ -156,7 +175,7 @@ module.exports = function inlineEditAnnotationPlugin() {
 
       if (!descriptor.template) return null;
 
-      const templateContentOffset = findTemplateContentOffset(
+      const contentOffset = templateContentOffset(
         code,
         descriptor.template.loc.start.offset
       );
@@ -171,8 +190,8 @@ module.exports = function inlineEditAnnotationPlugin() {
 
       const relId = path.relative(process.cwd(), id);
       const mutations = [];
-      const lineOffset = (code.slice(0, templateContentOffset).match(/\n/g) || []).length;
-      collectMutations(ast, relId, mutations, templateContentOffset, lineOffset);
+      const lineOffset = (code.slice(0, contentOffset).match(/\n/g) || []).length;
+      collectMutations(ast, relId, mutations, contentOffset, lineOffset);
 
       if (mutations.length === 0) return null;
 
@@ -197,3 +216,4 @@ module.exports = function inlineEditAnnotationPlugin() {
 
 // Exposed for unit testing — not part of the plugin's public surface.
 module.exports.findTemplateContentOffset = findTemplateContentOffset;
+module.exports.templateContentOffset = templateContentOffset;

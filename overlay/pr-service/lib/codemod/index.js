@@ -28,6 +28,8 @@ const BY_EXTENSION = {
   '.vue': applyVueEdits,
   '.html': applyHtmlEdits,
   '.htm': applyHtmlEdits,
+  // Svelte markup is HTML at the top level, so the same scanner applies.
+  '.svelte': applyHtmlEdits,
 };
 
 function extensionOf(filePath) {

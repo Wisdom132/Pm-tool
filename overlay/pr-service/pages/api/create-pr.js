@@ -122,12 +122,6 @@ export default async function handler(req, res) {
 
     await createBranch({ token: writeToken, owner, repo: repoName, branchName, fromSha });
 
-    // Group edits by file
-    const byFile = {};
-    for (const edit of withSource) {
-      (byFile[edit.sourceFile] = byFile[edit.sourceFile] || []).push(edit);
-    }
-
     const failures = [];
     const allApplied = [];
     let committedFiles = 0;
@@ -159,7 +153,59 @@ export default async function handler(req, res) {
       }
     }
 
-    for (const [filePath, fileEdits] of Object.entries(byFile)) {
+    // Whole-file edits from the in-browser code editor replace the file
+    // outright; they do not go through the codemod, because the author is a
+    // developer who wrote the result themselves. The blob sha they read the
+    // file at is passed straight through, so GitHub rejects the commit if
+    // the branch moved underneath them.
+    const wholeFileEdits = withSource.filter((e) => e.kind === 'file');
+
+    for (const edit of wholeFileEdits) {
+      try {
+        await commitFileChange({
+          token: writeToken, owner, repo: repoName,
+          path: edit.sourceFile,
+          branch: branchName,
+          content: edit.fileContent,
+          sha: edit.baseSha,
+          message: `inline-edit: edit ${edit.sourceFile}`,
+        });
+        allApplied.push({ ...edit, _match: 'source' });
+        committedFiles++;
+        log.info('create_pr.source_committed', { repo, path: edit.sourceFile });
+      } catch (err) {
+        failures.push({
+          ...edit,
+          reason:
+            err.status === 409
+              ? `${edit.sourceFile} changed on ${baseBranch} while it was open. Re-open it and redo the change.`
+              : `Could not commit ${edit.sourceFile}: ${err.message}`,
+        });
+      }
+    }
+
+    // Group the remaining, located edits by file.
+    const byFile = {};
+    for (const edit of withSource) {
+      if (edit.kind === 'file') continue;
+      (byFile[edit.sourceFile] = byFile[edit.sourceFile] || []).push(edit);
+    }
+
+    // A file cannot be both hand-edited and patched in one pull request —
+    // the codemod would be working from content the author has replaced.
+    for (const edit of wholeFileEdits) {
+      if (!byFile[edit.sourceFile]) continue;
+
+      for (const conflicting of byFile[edit.sourceFile]) {
+        failures.push({
+          ...conflicting,
+          reason: `${edit.sourceFile} was edited directly, so this change was not applied on top of it.`,
+        });
+      }
+      delete byFile[edit.sourceFile];
+    }
+
+    for (const [filePath, locatedEdits] of Object.entries(byFile)) {
       const { content: original, sha } = await getFileContent({
         token: writeToken, owner, repo: repoName, path: filePath, branch: branchName,
       });
@@ -170,7 +216,7 @@ export default async function handler(req, res) {
       const { content, applied, failed } = applyEditsToFile({
         content: original,
         filePath,
-        edits: fileEdits,
+        edits: locatedEdits,
       });
 
       for (const f of failed) failures.push({ ...f.edit, reason: f.reason });

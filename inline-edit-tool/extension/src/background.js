@@ -28,7 +28,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     chrome.identity.launchWebAuthFlow({ url: authUrl, interactive: true }, (redirectUrl) => {
       if (chrome.runtime.lastError || !redirectUrl) {
-        sendResponse({ error: chrome.runtime.lastError?.message || 'Auth cancelled' });
+        const raw = chrome.runtime.lastError?.message || 'Auth cancelled';
+
+        // Chrome reports an unreachable start page as "Authorization page
+        // could not be loaded", which says nothing about the cause. By far
+        // the most common one is that the pr-service is not running.
+        const unreachable = /could not be loaded|ERR_|net::/i.test(raw);
+        sendResponse({
+          error: unreachable
+            ? `Could not reach the pull-request service at ${serviceUrl}. ` +
+              `Start it with "npm run dev:svc", or set a different Service URL in the extension popup.`
+            : raw,
+          serviceUrl,
+          unreachable,
+        });
         return;
       }
       try {
@@ -63,6 +76,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         else         sendResponse({ data });
       } catch (err) {
         sendResponse({ error: err.message });
+      }
+    })();
+    return true;
+  }
+
+  // ── Inject the CodeMirror chunk on demand ──────────────────
+  // It is ~158kB gzipped, so it must not ride along with the content
+  // script. Injecting into the ISOLATED world puts it in the same context
+  // as the content script, where it can publish its factory on a global.
+  if (message.type === 'LOAD_CODE_EDITOR') {
+    (async () => {
+      try {
+        if (!sender?.tab?.id) {
+          sendResponse({ error: 'No tab to inject into.' });
+          return;
+        }
+
+        await chrome.scripting.executeScript({
+          target: { tabId: sender.tab.id, frameIds: [sender.frameId ?? 0] },
+          files: ['code-editor.js'],
+          world: 'ISOLATED',
+        });
+
+        sendResponse({ ok: true });
+      } catch (err) {
+        sendResponse({ error: `Could not load the code editor: ${err.message}` });
       }
     })();
     return true;
