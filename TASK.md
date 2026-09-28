@@ -51,6 +51,10 @@ The foundation. Nothing else in this file can ship without it.
 - [ ] **P0.3** Move the datastore behind the same interface the API already
       uses, so `lib/store.js` stays the place sessions live and the new tables
       are separate rather than bolted onto a KV store.
+- [ ] **P0.4a** Expire old rows. `session` and `login_token` grow without
+      bound — a session is revocable precisely because it is a row, and that
+      is the cost of the choice. A periodic `deleteMany` on `expiresAt`, or
+      the same on read. Cheap now, a slow table in a year.
 - [ ] **P0.4** Audit log for every privileged action — provider connected,
       site registered, branch changed, pull request opened. This is cheap to
       add now and very expensive to reconstruct later.
@@ -62,12 +66,19 @@ editor do an OAuth dance, and it requires the GitHub App to be installed on
 the organisation before a non-technical user can do anything — which is
 exactly where the first real install stalled.
 
-- [ ] **P1.1** Admin connects the provider **once, in the dashboard**. The
+- [x] **P1.1** Admin connects the provider **once, in the dashboard**. The
       extension stops holding a provider session entirely.
+      *API side done: `POST /connections/github/install-url` and the
+      `/connections/github/callback` redirect. The extension still holds its
+      own GitHub session until the pr-service migration lands.*
 - [ ] **P1.2** The extension authenticates to *us*, not to GitHub, and
       receives a short-lived token scoped to one site. A leaked extension
       token should not be a leaked GitHub token.
-- [ ] **P1.3** **Provider interface.** GitHub is currently woven through
+- [x] **P1.3** **Provider interface.** `RepositoryProvider` in
+      `apps/api/src/providers/provider.types.ts` — twelve operations, every
+      one with a caller today, and GitHub behind it in
+      `github/github.provider.ts`. Scoped to one repository, so resolving
+      `owner/repo` happens once. GitHub was previously woven through
       `lib/github.js`, `lib/github-app.js`, and the `create-pr`, `create-issue`,
       `file`, `locate`, `branches` and `repos` routes. Define the operations
       the product actually needs — read file, list branches, commit, open a
@@ -79,6 +90,31 @@ exactly where the first real install stalled.
 
 > The codemods are already provider-agnostic — they take file contents and
 > return file contents. Only the transport is coupled.
+
+### Landed with connections
+
+- Credential encryption at rest: AES-256-GCM, key rotation without a
+  migration, and a boot-time check so a missing key is a deployment that
+  never goes live rather than a 500 in front of a customer.
+  `apps/api/src/common/crypto.ts`, 15 tests.
+- Signed, expiring install state. It is the only thing tying "an
+  installation was created" to "this organisation asked for it" — without
+  it, whoever completes an install picks which organisation it lands in.
+  `apps/api/src/common/signed-state.ts`, 8 tests.
+- Connections endpoints: list, install URL, repositories, check, revoke.
+  Revoke is refused while sites still point at the connection, and it
+  forgets any cached installation token so it stops working immediately
+  rather than up to an hour later.
+- `test/connections-isolation.sh` — 15 adversarial checks against the
+  running API: state replay by another user, a forged state, a spoofed
+  organisation header, a cross-organisation connection id, credentials in a
+  response body, and revoke-with-dependants.
+
+**A GitHub App connection stores no secret.** The App private key is ours,
+held once in the environment; what is per-customer is the installation id,
+which is not sensitive. That is why `Connection.credentials` is nullable —
+encryption is there for GitLab and Bitbucket OAuth tokens and GitHub
+Enterprise access tokens, which arrive with P1.4 and P1.5.
 
 ## P2 — Site registry
 
