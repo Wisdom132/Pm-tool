@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Connection } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { ConnectionsRepository } from '../connections/connections.repository';
+import { SitesRepository } from '../sites/sites.repository';
 import { CredentialsService } from './credentials.service';
 import { GithubAppService } from './github/github-app.service';
 import { GithubProvider } from './github/github.provider';
@@ -19,7 +20,8 @@ import { splitRepository } from './repository-name';
 @Injectable()
 export class ProvidersService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly connections: ConnectionsRepository,
+    private readonly sites: SitesRepository,
     private readonly credentials: CredentialsService,
     private readonly githubApp: GithubAppService,
   ) {}
@@ -34,9 +36,7 @@ export class ProvidersService {
     connectionId: string,
     repository: string,
   ): Promise<RepositoryProvider> {
-    const connection = await this.prisma.connection.findFirst({
-      where: { id: connectionId, organisationId, revokedAt: null },
-    });
+    const connection = await this.connections.findActive(organisationId, connectionId);
 
     // Indistinguishable from a connection that does not exist, so a probe
     // cannot enumerate other organisations' connections.
@@ -55,10 +55,10 @@ export class ProvidersService {
     organisationId: string,
     environmentId: string,
   ): Promise<{ provider: RepositoryProvider; branch: string | null }> {
-    const environment = await this.prisma.siteEnvironment.findFirst({
-      where: { id: environmentId, organisationId },
-      include: { connection: true },
-    });
+    const environment = await this.sites.findEnvironmentWithConnection(
+      organisationId,
+      environmentId,
+    );
 
     if (!environment) throw new NotFoundException('No such site environment.');
 

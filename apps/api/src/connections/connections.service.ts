@@ -5,8 +5,8 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Provider } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { ConnectionsRepository } from './connections.repository';
+import { MembershipsRepository } from '../organisations/memberships.repository';
 import { GithubAppService } from '../providers/github/github-app.service';
 import { ProvidersService } from '../providers/providers.service';
 import { loadKeys } from '../common/crypto';
@@ -31,7 +31,8 @@ export class ConnectionsService {
   private stateKey?: Buffer;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly repository: ConnectionsRepository,
+    private readonly memberships: MembershipsRepository,
     private readonly githubApp: GithubAppService,
     private readonly providers: ProvidersService,
   ) {}
@@ -42,23 +43,7 @@ export class ConnectionsService {
   }
 
   list(organisationId: string) {
-    return this.prisma.connection.findMany({
-      where: { organisationId },
-      orderBy: [{ revokedAt: 'asc' }, { createdAt: 'desc' }],
-      // Never the credentials column. There is no endpoint that needs to
-      // return it, so the safest place to enforce that is the query.
-      select: {
-        id: true,
-        provider: true,
-        accountLogin: true,
-        externalId: true,
-        baseUrl: true,
-        createdAt: true,
-        revokedAt: true,
-        createdBy: { select: { id: true, name: true, email: true } },
-        _count: { select: { environments: true } },
-      },
-    });
+    return this.repository.listForOrganisation(organisationId);
   }
 
   /**
@@ -120,9 +105,7 @@ export class ConnectionsService {
 
     // Still confirm membership: the state could have been signed before the
     // user was removed from the organisation.
-    const membership = await this.prisma.memberships.findUnique({
-      where: { organisationId_userId: { organisationId, userId } },
-    });
+    const membership = await this.memberships.find(organisationId, userId);
     if (!membership || membership.role !== 'admin') {
       throw new BadRequestException('Only an admin of this organisation can connect a provider.');
     }
@@ -132,55 +115,13 @@ export class ConnectionsService {
     // Reinstalling produces a new installation id for the same account, and
     // "request" is GitHub telling us an owner has to approve first — neither
     // should create a second live connection.
-    const connection = await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.connection.findUnique({
-        where: {
-          organisationId_provider_externalId: {
-            organisationId,
-            provider: Provider.github,
-            externalId: params.installationId,
-          },
-        },
-      });
-
-      const saved = existing
-        ? await tx.connection.update({
-            where: { id: existing.id },
-            data: {
-              accountLogin: installation.accountLogin,
-              // Reinstalling un-revokes rather than leaving a dead row that
-              // sites still point at.
-              revokedAt: null,
-            },
-          })
-        : await tx.connection.create({
-            data: {
-              organisationId,
-              provider: Provider.github,
-              accountLogin: installation.accountLogin,
-              externalId: params.installationId,
-              createdById: userId,
-              // Null: a GitHub App install has no per-customer secret to
-              // keep. Tokens are minted from our App key on demand.
-              credentials: null,
-            },
-          });
-
-      await tx.auditEvent.create({
-        data: {
-          organisationId,
-          actorUserId: userId,
-          action: existing ? 'connection.reconnected' : 'connection.created',
-          subject: `github · ${installation.accountLogin}`,
-          detail: {
-            installationId: params.installationId,
-            repositories: installation.repositoryCount,
-            setupAction: params.setupAction ?? null,
-          },
-        },
-      });
-
-      return saved;
+    const { connection, reconnected } = await this.repository.recordGithubInstall({
+      organisationId,
+      userId,
+      installationId: params.installationId,
+      accountLogin: installation.accountLogin,
+      repositoryCount: installation.repositoryCount,
+      setupAction: params.setupAction,
     });
 
     // A reinstall reuses the id, so a token cached against it may have been
@@ -188,7 +129,8 @@ export class ConnectionsService {
     this.githubApp.forget(params.installationId);
 
     this.logger.log(
-      `Connected github installation ${params.installationId} (${installation.accountLogin}) to org ${organisationId}`,
+      `${reconnected ? 'Reconnected' : 'Connected'} github installation ` +
+        `${params.installationId} (${installation.accountLogin}) to org ${organisationId}`,
     );
 
     return {
@@ -201,12 +143,10 @@ export class ConnectionsService {
 
   /** Repositories this connection can reach, for the register-a-site form. */
   async repositories(organisationId: string, connectionId: string) {
-    const connection = await this.prisma.connection.findFirst({
-      where: { id: connectionId, organisationId, revokedAt: null },
-    });
+    const connection = await this.repository.findActive(organisationId, connectionId);
     if (!connection) throw new NotFoundException('No such connection.');
 
-    if (connection.provider !== Provider.github) {
+    if (connection.provider !== 'github') {
       throw new BadRequestException(`${connection.provider} is not supported yet.`);
     }
 
@@ -221,10 +161,7 @@ export class ConnectionsService {
    * who can tell whether that is intended.
    */
   async revoke(organisationId: string, userId: string, id: string) {
-    const connection = await this.prisma.connection.findFirst({
-      where: { id, organisationId },
-      include: { _count: { select: { environments: true } } },
-    });
+    const connection = await this.repository.findWithDependantCount(organisationId, id);
     if (!connection) throw new NotFoundException('No such connection.');
 
     if (connection._count.environments > 0) {
@@ -234,22 +171,11 @@ export class ConnectionsService {
       );
     }
 
-    const revoked = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.connection.update({
-        where: { id },
-        data: { revokedAt: new Date(), credentials: null },
-      });
-
-      await tx.auditEvent.create({
-        data: {
-          organisationId,
-          actorUserId: userId,
-          action: 'connection.revoked',
-          subject: `${connection.provider} · ${connection.accountLogin}`,
-        },
-      });
-
-      return updated;
+    const revoked = await this.repository.revoke({
+      organisationId,
+      userId,
+      id,
+      subject: `${connection.provider} · ${connection.accountLogin}`,
     });
 
     // Otherwise a cached installation token keeps working for up to an hour

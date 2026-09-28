@@ -1,6 +1,5 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
-import { Prisma, Role } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { AuthRepository } from './auth.repository';
 import { MailerService } from './mailer.service';
 import { createToken, hashToken } from '../common/tokens';
 
@@ -12,7 +11,7 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly repository: AuthRepository,
     private readonly mailer: MailerService,
   ) {}
 
@@ -26,18 +25,13 @@ export class AuthService {
     const normalised = email.trim().toLowerCase();
     const { token, hash } = createToken();
 
-    await this.prisma.loginToken.create({
-      data: {
-        email: normalised,
-        tokenHash: hash,
-        expiresAt: new Date(Date.now() + LINK_TTL_MINUTES * 60_000),
-      },
+    await this.repository.createLoginToken({
+      email: normalised,
+      tokenHash: hash,
+      expiresAt: new Date(Date.now() + LINK_TTL_MINUTES * 60_000),
     });
 
-    await this.mailer.sendSignInLink(
-      normalised,
-      `${appUrl}/sign-in/verify?token=${token}`,
-    );
+    await this.mailer.sendSignInLink(normalised, `${appUrl}/sign-in/verify?token=${token}`);
 
     return { sent: true };
   }
@@ -45,62 +39,54 @@ export class AuthService {
   /**
    * Finish a sign-in.
    *
-   * The token is consumed in the same transaction that reads it, so a link
-   * forwarded to someone else cannot be used a second time.
+   * Expired, already used and never issued are one error on purpose: which
+   * of the three it was is not something the person holding the link needs,
+   * and it is something an attacker probing forwarded links would like.
    */
   async verify(token: string, context: { userAgent?: string; ip?: string }) {
-    const tokenHash = hashToken(token);
+    const claimed = await this.repository.consumeLoginToken(hashToken(token));
+    if (!claimed) throw new UnauthorizedException('That sign-in link is no longer valid.');
 
-    const login = await this.prisma.loginToken.findUnique({ where: { tokenHash } });
+    const user = await this.findOrCreateUser(claimed.email);
+    const sessionToken = await this.createSession(user.id, 'dashboard', context);
 
-    if (!login || login.consumedAt || login.expiresAt < new Date()) {
-      throw new UnauthorizedException('That sign-in link is no longer valid.');
-    }
-
-    await this.prisma.loginToken.update({
-      where: { id: login.id },
-      data: { consumedAt: new Date() },
-    });
-
-    const user = await this.findOrCreateUser(login.email);
-    const session = await this.createSession(user.id, 'dashboard', context);
-
-    return { user, sessionToken: session.token };
+    return { user, sessionToken };
   }
 
   /** The session behind a token, or null. Also bumps lastSeenAt. */
   async resolveSession(token: string) {
-    const session = await this.prisma.session.findUnique({
-      where: { tokenHash: hashToken(token) },
-      include: { user: true },
-    });
+    const session = await this.repository.findLiveSession(hashToken(token));
+    if (!session) return null;
 
-    if (!session || session.revokedAt || session.expiresAt < new Date()) return null;
-
-    // Fire and forget: a failed timestamp update must not fail the request.
-    void this.prisma.session
-      .update({ where: { id: session.id }, data: { lastSeenAt: new Date() } })
-      .catch(() => undefined);
-
+    this.repository.touchSession(session.id);
     return session;
   }
 
-  async revokeSession(token: string) {
-    await this.prisma.session.updateMany({
-      where: { tokenHash: hashToken(token), revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+  revokeSession(token: string) {
+    return this.repository.revokeSession(hashToken(token));
   }
 
-  async revokeAllSessions(userId: string, exceptToken?: string) {
-    await this.prisma.session.updateMany({
-      where: {
-        userId,
-        revokedAt: null,
-        ...(exceptToken ? { NOT: { tokenHash: hashToken(exceptToken) } } : {}),
-      },
-      data: { revokedAt: new Date() },
-    });
+  revokeAllSessions(userId: string, exceptToken?: string) {
+    return this.repository.revokeAllSessions(
+      userId,
+      exceptToken ? hashToken(exceptToken) : undefined,
+    );
+  }
+
+  /** Who am I, and what can I see. The dashboard calls this on boot. */
+  async describe(userId: string) {
+    const user = await this.repository.findUserWithOrganisations(userId);
+
+    return {
+      user: { id: user.id, email: user.email, name: user.name },
+      organisations: user.memberships.map((m) => ({
+        id: m.organisation.id,
+        name: m.organisation.name,
+        slug: m.organisation.slug,
+        role: m.role,
+        meta: `${m.organisation._count.sites} sites · ${m.organisation._count.memberships} members`,
+      })),
+    };
   }
 
   private async createSession(
@@ -110,89 +96,45 @@ export class AuthService {
   ) {
     const { token, hash } = createToken();
 
-    await this.prisma.session.create({
-      data: {
-        userId,
-        kind,
-        tokenHash: hash,
-        userAgent: context.userAgent?.slice(0, 255),
-        ip: context.ip,
-        expiresAt: new Date(Date.now() + SESSION_TTL_DAYS * 86_400_000),
-      },
+    await this.repository.createSession({
+      userId,
+      kind,
+      tokenHash: hash,
+      userAgent: context.userAgent?.slice(0, 255),
+      ip: context.ip,
+      expiresAt: new Date(Date.now() + SESSION_TTL_DAYS * 86_400_000),
     });
 
-    return { token };
+    return token;
   }
 
   /**
    * Find the person, or make them — and give a brand-new one somewhere to be.
    *
-   * A user with no organisation would sign in to a dashboard that can show
-   * them nothing and offers no way forward, so the first sign-in creates one,
-   * along with the default team every invitation relies on.
+   * An invited person joins what they were invited to; creating them a
+   * second, empty organisation would be a confusing first impression. Anyone
+   * else gets an organisation of their own, because a user with none signs in
+   * to a dashboard that can show them nothing.
    */
   private async findOrCreateUser(email: string) {
-    const existing = await this.prisma.user.findUnique({ where: { email } });
+    const existing = await this.repository.findUserByEmail(email);
     if (existing) {
-      await this.prisma.user.update({
-        where: { id: existing.id },
-        data: { lastSeenAt: new Date() },
-      });
+      await this.repository.touchUser(existing.id);
       return existing;
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({ data: { email, lastSeenAt: new Date() } });
-
-      const pending = await tx.invitation.findFirst({
-        where: { email, acceptedAt: null, expiresAt: { gt: new Date() } },
-      });
-
-      // An invited person joins what they were invited to. Creating them a
-      // second, empty organisation would be a confusing first impression.
-      if (pending) return user;
-
-      const name = this.organisationNameFor(email);
-      const organisation = await tx.organisation.create({
-        data: { name, slug: await this.uniqueSlug(tx, name) },
-      });
-
-      await tx.memberships.create({
-        data: { organisationId: organisation.id, userId: user.id, role: Role.admin },
-      });
-
-      const team = await tx.team.create({
-        data: { organisationId: organisation.id, name: 'Everyone', isDefault: true },
-      });
-      await tx.teamMember.create({ data: { teamId: team.id, userId: user.id } });
-
-      await tx.auditEvent.create({
-        data: {
-          organisationId: organisation.id,
-          actorUserId: user.id,
-          action: 'organisation.created',
-          subject: organisation.name,
-        },
-      });
-
-      return user;
-    });
-  }
-
-  /** "ada@acme.com" → "Acme". A guess, and renameable in settings. */
-  private organisationNameFor(email: string) {
-    const domain = email.split('@')[1] ?? '';
-    const label = domain.split('.')[0] ?? 'My organisation';
-    if (!label) return 'My organisation';
-    return label.charAt(0).toUpperCase() + label.slice(1);
-  }
-
-  private async uniqueSlug(tx: Prisma.TransactionClient, name: string) {
-    const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'org';
-    for (let n = 0; ; n++) {
-      const slug = n === 0 ? base : `${base}-${n + 1}`;
-      const taken = await tx.organisation.findUnique({ where: { slug } });
-      if (!taken) return slug;
+    if (await this.repository.hasPendingInvitation(email)) {
+      return this.repository.createUser(email);
     }
+
+    return this.repository.createUserWithOrganisation(email, organisationNameFor(email));
   }
+}
+
+/** "ada@acme.com" → "Acme". A guess, and renameable in settings. */
+export function organisationNameFor(email: string): string {
+  const domain = email.split('@')[1] ?? '';
+  const label = domain.split('.')[0] ?? '';
+  if (!label) return 'My organisation';
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }

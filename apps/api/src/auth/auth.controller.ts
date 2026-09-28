@@ -5,14 +5,10 @@ import { RequestLinkDto, VerifyDto } from './dto';
 import { Public } from './public.decorator';
 import { SESSION_COOKIE } from './auth.guard';
 import { CurrentSession, Session } from './session.decorator';
-import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('auth')
 export class AuthController {
-  constructor(
-    private readonly auth: AuthService,
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly auth: AuthService) {}
 
   @Public()
   @Post('request-link')
@@ -44,35 +40,8 @@ export class AuthController {
 
   /** Who am I, and what can I see. The dashboard calls this on boot. */
   @Get('me')
-  async me(@Session() session: CurrentSession) {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: session.userId },
-      include: {
-        memberships: {
-          include: {
-            organisation: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-                _count: { select: { sites: true, memberships: true } },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    return {
-      user: { id: user.id, email: user.email, name: user.name },
-      organisations: user.memberships.map((m) => ({
-        id: m.organisation.id,
-        name: m.organisation.name,
-        slug: m.organisation.slug,
-        role: m.role,
-        meta: `${m.organisation._count.sites} sites · ${m.organisation._count.memberships} members`,
-      })),
-    };
+  me(@Session() session: CurrentSession) {
+    return this.auth.describe(session.userId);
   }
 
   @Post('sign-out')

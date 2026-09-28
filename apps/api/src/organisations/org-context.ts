@@ -9,7 +9,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { Role } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { MembershipsRepository } from './memberships.repository';
 
 export const ORG_HEADER = 'x-organisation-id';
 
@@ -30,7 +30,7 @@ export interface OrgContext {
 @Injectable()
 export class OrgGuard implements CanActivate {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly memberships: MembershipsRepository,
     private readonly reflector: Reflector,
   ) {}
 
@@ -47,11 +47,7 @@ export class OrgGuard implements CanActivate {
       throw new BadRequestException(`Set the ${ORG_HEADER} header.`);
     }
 
-    const membership = await this.prisma.memberships.findUnique({
-      where: {
-        organisationId_userId: { organisationId, userId: session.userId },
-      },
-    });
+    const membership = await this.memberships.find(organisationId, session.userId);
 
     // Not a member reads the same as not existing: confirming the id is real
     // would let someone enumerate other people's organisations.

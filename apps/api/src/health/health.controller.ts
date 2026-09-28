@@ -1,10 +1,10 @@
 import { Controller, Get } from '@nestjs/common';
 import { Public } from '../auth/public.decorator';
-import { PrismaService } from '../prisma/prisma.service';
+import { HealthRepository } from './health.repository';
 
 @Controller('health')
 export class HealthController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly health: HealthRepository) {}
 
   /**
    * Reports the database too, not just that the process is up.
@@ -14,12 +14,11 @@ export class HealthController {
   @Public()
   @Get()
   async check() {
-    let database = 'up';
-    try {
-      await this.prisma.$queryRaw`SELECT 1`;
-    } catch {
-      database = 'down';
-    }
-    return { status: database === 'up' ? 'ok' : 'degraded', database, at: new Date().toISOString() };
+    const up = await this.health.isReachable();
+    return {
+      status: up ? 'ok' : 'degraded',
+      database: up ? 'up' : 'down',
+      at: new Date().toISOString(),
+    };
   }
 }
