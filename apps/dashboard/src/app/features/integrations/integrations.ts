@@ -13,41 +13,10 @@ interface Integration {
 
 @Component({
   selector: 'app-integrations',
+  templateUrl: './integrations.html',
+  styleUrl: './integrations.scss',
   imports: [Button, Tag, PageHeader],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <ds-page-header title="Integrations" subtitle="Send feedback and edits where your team already works" />
-
-    <div class="grid">
-      @for (i of available; track i.id) {
-        <div class="ds-surface card">
-          <span class="mark"><i [class]="i.icon"></i></span>
-          <div class="body">
-            <div class="title-row">
-              <strong>{{ i.name }}</strong>
-              @if (i.connected) { <p-tag value="Connected" severity="success" [rounded]="true" /> }
-            </div>
-            <p>{{ i.blurb }}</p>
-          </div>
-          <p-button
-            [label]="i.connected ? 'Manage' : 'Connect'"
-            size="small"
-            [outlined]="!i.connected"
-            [text]="i.connected"
-            severity="secondary" />
-        </div>
-      }
-    </div>
-  `,
-  styles: `
-    :host { display: grid; gap: var(--ds-s-5); }
-    .grid { display: grid; gap: var(--ds-s-4); grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
-    .card { padding: var(--ds-s-5); display: grid; gap: var(--ds-s-4); grid-template-rows: auto 1fr auto; justify-items: start; }
-    .mark { width: 40px; height: 40px; border-radius: var(--ds-r-md); background: var(--ds-muted-bg); display: grid; place-items: center; font-size: 18px; }
-    .title-row { display: flex; align-items: center; gap: var(--ds-s-2); }
-    .body strong { font-size: var(--ds-t-title); color: var(--p-text-color); }
-    .body p { margin: var(--ds-s-2) 0 0; font-size: var(--ds-t-small); line-height: 1.5; color: var(--p-text-muted-color); }
-  `,
 })
 export class Integrations {
   protected readonly available: Integration[] = [

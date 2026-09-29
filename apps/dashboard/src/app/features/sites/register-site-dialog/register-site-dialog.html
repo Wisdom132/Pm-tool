@@ -1,0 +1,212 @@
+<p-dialog
+  [(visible)]="visible"
+  [modal]="true"
+  [draggable]="false"
+  [style]="{ width: '620px' }"
+  (onHide)="reset()">
+  <ng-template #header>
+    <div class="head">
+      <strong>Register a site</strong>
+      <small>Step {{ step() }} of 4 · {{ stepName() }}</small>
+    </div>
+  </ng-template>
+
+  <div class="rail">
+    @for (n of [1, 2, 3, 4]; track n) {
+      <span class="tick" [class.on]="step() >= n" [class.current]="step() === n"></span>
+    }
+  </div>
+
+  <!-- ── 1. Which hostname ─────────────────────────────── -->
+  @if (step() === 1) {
+    <div class="form">
+      <div class="field">
+        <label for="hostname">Hostname</label>
+        <input pInputText id="hostname" [(ngModel)]="hostname" placeholder="staging.acme.com" />
+        <small>
+          One wildcard label is allowed at the front, which is how preview
+          deploys are covered: <code>*.acme.vercel.app</code>.
+        </small>
+      </div>
+
+      <div class="field">
+        <label>Environment</label>
+        <p-selectbutton
+          [options]="environments"
+          [(ngModel)]="environment"
+          optionLabel="label"
+          optionValue="value"
+          size="small"
+          [allowEmpty]="false" />
+      </div>
+
+      <div class="field">
+        <label for="name">Display name <span class="opt">optional</span></label>
+        <input pInputText id="name" [(ngModel)]="name" placeholder="Acme — staging" />
+      </div>
+    </div>
+  }
+
+  <!-- ── 2. Which repository and branch ────────────────── -->
+  @if (step() === 2) {
+    <div class="form">
+      <div class="field">
+        <label for="connection">Connection</label>
+        <p-select
+          id="connection"
+          [options]="connections()"
+          [ngModel]="connectionId"
+          (ngModelChange)="onConnectionChange($event)"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Choose a provider account"
+          [fluid]="true" />
+      </div>
+
+      <div class="field">
+        <label for="repo">Repository</label>
+        <p-select
+          id="repo"
+          [options]="repositories()"
+          [loading]="loadingRepos()"
+          [ngModel]="repository"
+          (ngModelChange)="onRepositoryChange($event)"
+          placeholder="Choose a repository"
+          [filter]="true"
+          [fluid]="true" />
+      </div>
+
+      <div class="field">
+        <label>Branch</label>
+        <div class="choices">
+          <label class="choice" [class.on]="branchMode() === 'fixed'">
+            <p-radiobutton name="branchMode" value="fixed" [ngModel]="branchMode()" (ngModelChange)="branchMode.set($event)" inputId="fixed" />
+            <span>
+              <strong>A fixed branch</strong>
+              <small>Every edit on this hostname targets the same branch.</small>
+            </span>
+          </label>
+
+          @if (branchMode() === 'fixed') {
+            <p-select
+              [options]="branches()"
+              [loading]="loadingBranches()"
+              [(ngModel)]="branch"
+              placeholder="Choose a branch"
+              [fluid]="true"
+              styleClass="nested" />
+          }
+
+          <label class="choice" [class.on]="branchMode() === 'page'">
+            <p-radiobutton name="branchMode" value="page" [ngModel]="branchMode()" (ngModelChange)="branchMode.set($event)" inputId="page" />
+            <span>
+              <strong>Read it from the page</strong>
+              <small>
+                What preview deploys need: each deployment is a different
+                branch, and the build stamps which one onto the page.
+              </small>
+            </span>
+          </label>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ── 3. Prove you own it ───────────────────────────── -->
+  @if (step() === 3) {
+    <div class="form">
+      <p class="lede">
+        Add one of these to <code>{{ hostname || 'your domain' }}</code>, then
+        press Verify. Without it anyone could claim this hostname and
+        collect the feedback left on it.
+      </p>
+
+      <div class="field">
+        <label>DNS record</label>
+        <div class="snippet">
+          <code>TXT  _inline-edit.{{ hostname || 'acme.com' }}  {{ 'shown on the site page once registered' }}</code>
+          <p-button icon="pi pi-copy" [text]="true" severity="secondary" size="small" ariaLabel="Copy" />
+        </div>
+      </div>
+
+      <div class="or"><span>or</span></div>
+
+      <div class="field">
+        <label>Meta tag in your &lt;head&gt;</label>
+        <div class="snippet">
+          <code>&lt;meta name="inline-edit-verification" content="{{ 'shown on the site page once registered' }}" /&gt;</code>
+          <p-button icon="pi pi-copy" [text]="true" severity="secondary" size="small" ariaLabel="Copy" />
+        </div>
+      </div>
+
+      @if (error()) {
+        <p-message severity="error" [closable]="false">{{ error() }}</p-message>
+      }
+
+      @if (verifyFailed()) {
+        <p-message severity="warn" [closable]="false">
+          Not found yet. DNS can take a few minutes to propagate — you can
+          carry on and verify later.
+        </p-message>
+      }
+    </div>
+  }
+
+  <!-- ── 4. Stamp the source locations ─────────────────── -->
+  @if (step() === 4) {
+    <div class="form">
+      <p class="lede">
+        Last thing. The editor traces a heading on the page back to the line
+        that produced it, and only a build plugin can record that. Without
+        this step the site loads but almost nothing is editable.
+      </p>
+
+      <div class="field">
+        <label>Framework</label>
+        <p-select
+          [options]="frameworks"
+          [ngModel]="framework()"
+          (ngModelChange)="framework.set($event)"
+          optionLabel="label"
+          optionValue="value"
+          [fluid]="true" />
+      </div>
+
+      <div class="field">
+        <label>Install</label>
+        <div class="snippet block">
+          <code>npm i -D &#64;quartalyst/inline-edit-annotation</code>
+          <p-button icon="pi pi-copy" [text]="true" severity="secondary" size="small" ariaLabel="Copy" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>{{ snippet().file }}</label>
+        <pre class="code">{{ snippet().code }}</pre>
+      </div>
+
+      <p-message severity="secondary" [closable]="false">
+        Nothing is annotated unless <code>INLINE_EDIT=1</code> is set, so your
+        normal builds are untouched. Set it on the deploy that editors use.
+      </p-message>
+    </div>
+  }
+
+  <ng-template #footer>
+    @if (step() > 1) {
+      <p-button label="Back" [text]="true" severity="secondary" (onClick)="step.set(step() - 1)" />
+    }
+    @if (step() === 3) {
+      <p-button label="Skip for now" [text]="true" severity="secondary" (onClick)="step.set(4)" />
+      <p-button
+        [label]="saving() ? 'Registering…' : 'Register site'"
+        icon="pi pi-check"
+        [disabled]="saving()"
+        (onClick)="register()" />
+    } @else if (step() === 4) {
+      <p-button label="Finish" icon="pi pi-check" (onClick)="finish()" />
+    } @else {
+      <p-button label="Continue" icon="pi pi-arrow-right" iconPos="right" [disabled]="!canContinue()" (onClick)="step.set(step() + 1)" />
+    }
+  </ng-template>
+</p-dialog>

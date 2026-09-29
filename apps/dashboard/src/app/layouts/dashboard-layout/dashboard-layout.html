@@ -1,0 +1,20 @@
+<ds-app-shell
+  [nav]="nav"
+  [active]="active()"
+  [organisation]="organisation()"
+  [organisationMeta]="organisationMeta()"
+  [showOrganisation]="!!organisation()"
+  [organisationId]="organisationId()"
+  [organisations]="organisations()"
+  (switchOrganisation)="onSwitchOrganisation($event)"
+  [user]="user()"
+  [role]="role()"
+  [(dark)]="dark"
+  (navigate)="onNavigate($event)"
+  (logout)="onLogout()">
+  <ng-container dsCrumbs>
+    <strong>{{ crumb() }}</strong>
+  </ng-container>
+
+  <router-outlet />
+</ds-app-shell>

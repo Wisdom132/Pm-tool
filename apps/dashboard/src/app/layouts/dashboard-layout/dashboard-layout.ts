@@ -13,31 +13,10 @@ import { Session } from '../../core/session';
  */
 @Component({
   selector: 'app-dashboard-layout',
+  templateUrl: './dashboard-layout.html',
+  styleUrl: './dashboard-layout.scss',
   imports: [AppShell, RouterOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <ds-app-shell
-      [nav]="nav"
-      [active]="active()"
-      [organisation]="organisation()"
-      [organisationMeta]="organisationMeta()"
-      [showOrganisation]="!!organisation()"
-      [organisationId]="organisationId()"
-      [organisations]="organisations()"
-      (switchOrganisation)="onSwitchOrganisation($event)"
-      [user]="user()"
-      [role]="role()"
-      [(dark)]="dark"
-      (navigate)="onNavigate($event)"
-      (logout)="onLogout()">
-      <ng-container dsCrumbs>
-        <strong>{{ crumb() }}</strong>
-      </ng-container>
-
-      <router-outlet />
-    </ds-app-shell>
-  `,
-  styles: `:host { display: block; }`,
 })
 export class DashboardLayout {
   protected readonly nav = DEFAULT_NAV;

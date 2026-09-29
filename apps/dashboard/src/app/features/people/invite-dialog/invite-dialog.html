@@ -1,0 +1,102 @@
+<p-dialog
+  [(visible)]="visible"
+  [modal]="true"
+  [draggable]="false"
+  [style]="{ width: '560px' }"
+  (onHide)="reset()">
+  <ng-template #header>
+    <div class="head">
+      <strong>{{ sent() ? 'Invitations sent' : 'Invite people' }}</strong>
+      <small>
+        {{ sent() ? 'They can accept from their inbox' : 'They sign in with the email you enter — no GitHub account needed' }}
+      </small>
+    </div>
+  </ng-template>
+
+  @if (!sent()) {
+    <div class="form">
+      <div class="field">
+        <label for="emails">Email addresses</label>
+        <div class="entry">
+          @if (emails().length) {
+            <div class="chips">
+              @for (e of emails(); track e) {
+                <p-chip [label]="e" [removable]="true" (onRemove)="remove(e)" />
+              }
+            </div>
+          }
+          <input
+            pInputText
+            id="emails"
+            type="email"
+            [ngModel]="draft()"
+            (ngModelChange)="draft.set($event)"
+            (keydown.enter)="add($event)"
+            (keydown.comma)="add($event)"
+            (blur)="add($event)"
+            [placeholder]="emails().length ? 'Add another…' : 'ada@acme.com'" />
+        </div>
+        <small>Enter or a comma adds an address. Paste a list and they all land.</small>
+      </div>
+
+      <div class="field">
+        <label>Role</label>
+        <div class="roles">
+          @for (r of roles; track r.value) {
+            <button
+              type="button"
+              class="role"
+              [class.on]="role() === r.value"
+              (click)="role.set(r.value)">
+              <span class="radio" [class.on]="role() === r.value"></span>
+              <span class="text">
+                <strong>{{ r.label }}</strong>
+                <small>{{ r.blurb }}</small>
+              </span>
+            </button>
+          }
+        </div>
+      </div>
+
+      @if (invalid().length) {
+        <p-message severity="warn" [closable]="false">
+          Not an email address: {{ invalid().join(', ') }}
+        </p-message>
+      }
+    </div>
+  } @else {
+    <div class="done">
+      <span class="tick"><i class="pi pi-send"></i></span>
+      <strong>
+        {{ succeeded().length }} invitation{{ succeeded().length === 1 ? '' : 's' }} sent
+      </strong>
+      <small>They expire in 14 days. Revoke any of them from the People list.</small>
+
+      @if (failed().length) {
+        <!-- Per-address, because one refusal must not read as a total
+             failure — and "already in this organisation" is the common
+             one, which is not really an error at all. -->
+        <p-message severity="warn" [closable]="false" styleClass="failures">
+          <span class="failures-body">
+            @for (f of failed(); track f.email) {
+              <span><strong>{{ f.email }}</strong> — {{ f.reason }}</span>
+            }
+          </span>
+        </p-message>
+      }
+    </div>
+  }
+
+  <ng-template #footer>
+    @if (!sent()) {
+      <p-button label="Cancel" [text]="true" severity="secondary" (onClick)="visible.set(false)" />
+      <p-button
+        [label]="sending() ? 'Sending…' : (emails().length > 1 ? 'Send ' + emails().length + ' invitations' : 'Send invitation')"
+        icon="pi pi-send"
+        [disabled]="!canSend() || sending()"
+        (onClick)="send()" />
+    } @else {
+      <p-button label="Done" (onClick)="visible.set(false)" />
+    }
+  </ng-template>
+</p-dialog>

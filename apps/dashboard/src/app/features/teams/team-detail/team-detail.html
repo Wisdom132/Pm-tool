@@ -1,0 +1,120 @@
+@if (loader.state() === 'error') {
+  <div class="ds-surface">
+    <ds-error-state
+      title="Could not load this team"
+      [detail]="loader.error() ?? 'It may have been deleted.'"
+      (retry)="reload()" />
+  </div>
+} @else if (loader.state() === 'loading') {
+  <div class="ds-surface panel">
+    <p-skeleton width="30%" height="1.4rem" />
+    <p-skeleton width="60%" height="1rem" />
+  </div>
+} @else if (team(); as t) {
+  <ds-page-header [title]="t.name" [subtitle]="subtitle(t)">
+    @if (!t.isDefault && isAdmin()) {
+      <p-button
+        [label]="deleting() ? 'Deleting…' : 'Delete team'"
+        [text]="true"
+        severity="danger"
+        size="small"
+        [disabled]="deleting()"
+        dsActions
+        (onClick)="remove(t)" />
+    }
+  </ds-page-header>
+
+  <a routerLink="/teams" class="back"><i class="pi pi-arrow-left"></i> All teams</a>
+
+  @if (error()) {
+    <p-message severity="error" [closable]="true" (onClose)="error.set('')">{{ error() }}</p-message>
+  }
+
+  <section class="ds-surface panel">
+    <header>
+      <h2>Sites</h2>
+      <span class="muted">
+        @if (saving() === 'sites') { Saving… } @else { What this team is allowed to edit }
+      </span>
+    </header>
+
+    @if (t.isDefault) {
+      <p class="locked">
+        <i class="pi pi-info-circle"></i>
+        Every newly registered site is added to this team automatically, and
+        everyone who accepts an invitation joins it — so it is what stops a
+        new editor signing in to an empty dashboard. You can still narrow it
+        here, but new sites will keep appearing.
+      </p>
+    }
+
+    @if (!sites().length) {
+      <ds-empty-state
+        icon="pi pi-globe"
+        title="No sites registered"
+        description="Register a site first — until then there is nothing to grant."
+        size="sm" />
+    } @else {
+      <div class="options">
+        @for (s of sites(); track s.id) {
+          <label class="option" [class.disabled]="!isAdmin()">
+            <p-checkbox
+              [binary]="true"
+              [disabled]="!isAdmin() || saving() === 'sites'"
+              [ngModel]="siteIds().includes(s.siteId)"
+              (ngModelChange)="toggleSite(s.siteId)" />
+            <span class="text">
+              <strong>{{ s.hostname }}</strong>
+              <small>{{ s.repository }} · {{ s.branch ?? 'branch from the page' }}</small>
+            </span>
+            <p-tag [value]="s.label" severity="secondary" [rounded]="true" />
+          </label>
+        }
+      </div>
+    }
+  </section>
+
+  <section class="ds-surface panel">
+    <header>
+      <h2>Members</h2>
+      <span class="muted">
+        @if (saving() === 'members') { Saving… } @else { {{ t.members.length }} in this team }
+      </span>
+    </header>
+
+    @if (!candidates().length) {
+      <ds-empty-state
+        icon="pi pi-users"
+        title="Nobody to add"
+        description="Invite someone from the People page first."
+        size="sm" />
+    } @else {
+      <ul class="people">
+        @for (p of candidates(); track p.id) {
+          <li>
+            @if (isAdmin()) {
+              <p-checkbox
+                [binary]="true"
+                [disabled]="saving() === 'members'"
+                [ngModel]="memberIds().includes(p.id)"
+                (ngModelChange)="toggleMember(p.id)" />
+            }
+            <p-avatar [label]="(p.name || p.email).charAt(0).toUpperCase()" shape="circle" />
+            <span class="text">
+              <strong>{{ p.name || p.email }}</strong>
+              <small>{{ p.email }}</small>
+            </span>
+            <p-tag
+              [value]="p.role === 'admin' ? 'Admin' : 'Editor'"
+              [severity]="p.role === 'admin' ? 'info' : 'secondary'"
+              [rounded]="true" />
+          </li>
+        }
+      </ul>
+      <small class="hint">
+        Admins reach every site regardless of team, so adding one changes
+        nothing about their access.
+      </small>
+    }
+  </section>
+}

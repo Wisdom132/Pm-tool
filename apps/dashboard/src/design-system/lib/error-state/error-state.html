@@ -1,0 +1,8 @@
+<span class="icon"><i class="pi pi-exclamation-triangle"></i></span>
+<div class="copy">
+  <span class="title">{{ title() }}</span>
+  <span class="desc">{{ detail() || 'Something went wrong on our side.' }}</span>
+</div>
+<div class="actions">
+  <p-button label="Try again" icon="pi pi-refresh" size="small" [outlined]="true" (onClick)="retry.emit()" />
+</div>

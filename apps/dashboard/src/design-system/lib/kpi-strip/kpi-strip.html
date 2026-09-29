@@ -1,0 +1,5 @@
+<div class="grid" [style.--cols]="items().length">
+  @for (k of items(); track k.label) {
+    <ds-stat-card variant="plain" [label]="k.label" [value]="k.value" [caption]="k.caption" [captionTrend]="k.trend ?? 'neutral'" [delta]="k.delta" [trend]="k.trend ?? 'neutral'" />
+  }
+</div>

@@ -1,0 +1,118 @@
+@if (loader.state() === 'error') {
+  <div class="ds-surface">
+    <ds-error-state
+      title="Could not load this feedback"
+      [detail]="loader.error() ?? 'It may have been deleted.'"
+      (retry)="reload()" />
+  </div>
+} @else if (loader.state() === 'loading') {
+  <div class="ds-surface panel">
+    <p-skeleton width="25%" height="1rem" />
+    <p-skeleton width="90%" height="1.2rem" />
+  </div>
+} @else if (item(); as f) {
+  <ds-page-header title="Feedback" [subtitle]="context(f)">
+    <p-button
+      label="Delete"
+      icon="pi pi-trash"
+      size="small"
+      [text]="true"
+      severity="danger"
+      dsActions
+      [disabled]="busy()"
+      (onClick)="remove(f)" />
+  </ds-page-header>
+
+  <a routerLink="/feedback" class="back"><i class="pi pi-arrow-left"></i> All feedback</a>
+
+  @if (error()) {
+    <p-message severity="error" [closable]="true" (onClose)="error.set('')">{{ error() }}</p-message>
+  }
+
+  <section class="ds-surface panel">
+    <header>
+      <p-tag
+        [value]="f.status"
+        [severity]="f.status === 'new' ? 'info' : f.status === 'triaged' ? 'warn' : 'success'"
+        [rounded]="true" />
+      <span class="muted">
+        {{ f.author.name || f.author.email || 'Anonymous' }}
+        @if (!f.author.verified && (f.author.name || f.author.email)) {
+          <i class="pi pi-question-circle" title="Self-reported — this person was not signed in"></i>
+        }
+        · {{ f.createdAt | date: 'd MMM y, HH:mm' }}
+      </span>
+    </header>
+
+    <p class="message">{{ f.message }}</p>
+
+    <div class="where">
+      <i class="pi pi-file"></i>
+      @if (f.sourceFile) {
+        <code>{{ f.sourceFile }}@if (f.sourceLine) {:{{ f.sourceLine }}}</code>
+      } @else {
+        <span class="muted">Source not resolved — the editor will search for this text</span>
+      }
+    </div>
+
+    <dl class="context">
+      <div><dt>Page</dt><dd><a [href]="f.pageUrl" target="_blank" rel="noopener">{{ f.pageUrl }}</a></dd></div>
+      @if (f.element) { <div><dt>Element</dt><dd><code>{{ f.element }}</code></dd></div> }
+      @if (f.environment) { <div><dt>Site</dt><dd>{{ f.environment.hostname }} · {{ f.environment.label }}</dd></div> }
+      @if (f.viewport) { <div><dt>Viewport</dt><dd>{{ f.viewport }}</dd></div> }
+      @if (f.userAgent) { <div><dt>Browser</dt><dd class="ua">{{ f.userAgent }}</dd></div> }
+      @if (f.resolvedBy && f.resolvedAt) {
+        <div>
+          <dt>Resolved</dt>
+          <dd>
+            by {{ f.resolvedBy.name || f.resolvedBy.email }}, {{ f.resolvedAt | date: 'd MMM y, HH:mm' }}
+          </dd>
+        </div>
+      }
+    </dl>
+  </section>
+
+  <section class="ds-surface panel">
+    <h2>Triage</h2>
+
+    <div class="field">
+      <label>Status</label>
+      <p-selectbutton
+        [options]="statuses"
+        [ngModel]="f.status"
+        (ngModelChange)="setStatus(f, $event)"
+        optionLabel="label"
+        optionValue="value"
+        size="small"
+        [allowEmpty]="false"
+        [disabled]="busy()" />
+    </div>
+
+    <div class="field">
+      <label for="promoted">Issue or pull request</label>
+      @if (f.promotedUrl) {
+        <p class="promoted">
+          <i class="pi pi-external-link"></i>
+          <a [href]="f.promotedUrl" target="_blank" rel="noopener">{{ f.promotedUrl }}</a>
+        </p>
+      } @else {
+        <div class="promote">
+          <input
+            pInputText
+            id="promoted"
+            [(ngModel)]="promoteUrl"
+            placeholder="https://github.com/acme/site/issues/12" />
+          <p-button
+            label="Link"
+            size="small"
+            [disabled]="!promoteUrl.trim() || busy()"
+            (onClick)="promote(f)" />
+        </div>
+        <small>
+          Recording it here is how the person who left this comment can see
+          it was acted on. Creating it is still done from the editor.
+        </small>
+      }
+    </div>
+  </section>
+}

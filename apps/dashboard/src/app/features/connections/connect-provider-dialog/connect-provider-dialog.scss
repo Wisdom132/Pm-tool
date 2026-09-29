@@ -1,0 +1,29 @@
+.head { display: grid; gap: 2px; }
+.head strong { font-size: var(--ds-t-title); }
+.head small { font-size: var(--ds-t-caption); color: var(--p-text-muted-color); font-weight: 500; }
+
+.providers { display: grid; gap: var(--ds-s-2); }
+.provider { display: flex; align-items: center; gap: var(--ds-s-3); padding: var(--ds-s-4); border: 1px solid var(--ds-border); border-radius: var(--ds-r-md); background: transparent; font: inherit; text-align: left; cursor: pointer; transition: background var(--ds-trans-tap), border-color var(--ds-trans-tap); }
+.provider:hover:not(:disabled) { background: var(--ds-muted-bg); border-color: var(--p-primary-color); }
+.provider.unavailable { opacity: 0.55; cursor: default; }
+.mark { width: 38px; height: 38px; flex: none; border-radius: var(--ds-r-sm); background: var(--ds-muted-bg); display: grid; place-items: center; font-size: 17px; color: var(--p-text-color); }
+.provider .text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.provider .text strong { font-size: var(--ds-t-body); color: var(--p-text-color); }
+.provider .text small { font-size: var(--ds-t-caption); color: var(--p-text-muted-color); }
+.soon { font-size: var(--ds-t-caption); font-weight: 600; color: var(--p-text-muted-color); }
+
+.review { display: grid; gap: var(--ds-s-4); }
+.lede { margin: 0; font-size: var(--ds-t-body); line-height: 1.6; color: var(--p-text-color); }
+.scopes { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--ds-s-3); }
+.scopes li { display: flex; gap: var(--ds-s-3); }
+.scopes i { margin-top: 3px; color: var(--ds-success-ink); }
+.scopes .denied i { color: var(--p-text-muted-color); }
+.scopes div { display: grid; gap: 2px; }
+.scopes strong { font-size: var(--ds-t-small); color: var(--p-text-color); }
+.scopes small { font-size: var(--ds-t-caption); line-height: 1.5; color: var(--p-text-muted-color); }
+
+.waiting { display: grid; justify-items: center; gap: var(--ds-s-3); padding: var(--ds-s-8) var(--ds-s-4); text-align: center; }
+.waiting strong { font-size: var(--ds-t-title); }
+.waiting small { font-size: var(--ds-t-small); color: var(--p-text-muted-color); }
+.cross { width: 48px; height: 48px; border-radius: 50%; background: var(--ds-danger-soft, var(--ds-muted-bg)); color: var(--p-red-500, #dc2626); display: grid; place-items: center; font-size: 20px; }
+:host ::ng-deep .spin { width: 40px; height: 40px; }

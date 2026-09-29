@@ -1,0 +1,73 @@
+<p-dialog
+  [(visible)]="visible"
+  [modal]="true"
+  [draggable]="false"
+  [style]="{ width: '560px' }"
+  (onHide)="reset()">
+  <ng-template #header>
+    <div class="head">
+      <strong>New team</strong>
+      <small>A group of people, and the sites they can edit</small>
+    </div>
+  </ng-template>
+
+  <div class="form">
+    @if (error()) {
+      <p-message severity="error" [closable]="false">{{ error() }}</p-message>
+    }
+
+    <div class="field">
+      <label for="name">Name</label>
+      <input pInputText id="name" [(ngModel)]="name" placeholder="Marketing" />
+    </div>
+
+    <div class="field">
+      <label>Sites this team can edit</label>
+      <div class="options">
+        @for (s of sites(); track s.id) {
+          <label class="option">
+            <p-checkbox
+              [binary]="true"
+              [ngModel]="siteIds().includes(s.siteId)"
+              (ngModelChange)="toggleSite(s.siteId)" />
+            <span class="text">
+              <strong>{{ s.hostname }}</strong>
+              <small>{{ s.repository }} · {{ s.branch ?? 'branch from the page' }}</small>
+            </span>
+          </label>
+        }
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Members</label>
+      <div class="options">
+        @for (m of members(); track m.id) {
+          <label class="option">
+            <p-checkbox
+              [binary]="true"
+              [ngModel]="memberIds().includes(m.id)"
+              (ngModelChange)="toggleMember(m.id)" />
+            <span class="text">
+              <strong>{{ m.name || m.email }}</strong>
+              <small>{{ m.role === 'admin' ? 'Admin — already has every site' : m.email }}</small>
+            </span>
+          </label>
+        }
+      </div>
+      <small class="hint">
+        Admins can edit every site regardless, so adding one here changes
+        nothing. It is allowed because a team is also how people find each
+        other.
+      </small>
+    </div>
+  </div>
+
+  <ng-template #footer>
+    <p-button label="Cancel" [text]="true" severity="secondary" (onClick)="visible.set(false)" />
+    <p-button
+      [label]="saving() ? 'Creating…' : 'Create team'"
+      [disabled]="!name.trim() || saving()"
+      (onClick)="create()" />
+  </ng-template>
+</p-dialog>

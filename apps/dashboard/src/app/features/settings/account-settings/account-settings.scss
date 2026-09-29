@@ -1,0 +1,16 @@
+:host { display: grid; gap: var(--ds-s-5); }
+.panel { padding: var(--ds-s-5); display: grid; gap: var(--ds-s-4); max-width: 640px; }
+.panel h2 { font-size: var(--ds-t-title); font-weight: 700; }
+.field { display: grid; gap: var(--ds-s-2); }
+.field label { font-size: var(--ds-t-caption); font-weight: 600; color: var(--p-text-color); }
+.field small { font-size: var(--ds-t-caption); line-height: 1.5; color: var(--p-text-muted-color); }
+.sessions { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--ds-s-3); }
+.sessions li { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-s-3); }
+.sessions strong { display: block; font-size: var(--ds-t-small); color: var(--p-text-color); }
+.sessions small { font-size: var(--ds-t-caption); color: var(--p-text-muted-color); }
+.current { font-size: var(--ds-t-caption); font-weight: 600; color: var(--ds-success-ink); }
+.actions { display: flex; }
+.hint { margin: 0; font-size: var(--ds-t-caption); line-height: 1.55; color: var(--p-text-muted-color); }
+.issued { display: grid; gap: var(--ds-s-2); text-align: left; }
+.issued code { padding: var(--ds-s-2); border-radius: var(--ds-r-sm); background: var(--ds-muted-bg); font-family: var(--ds-font-mono, ui-monospace, monospace); font-size: var(--ds-t-caption); overflow-wrap: anywhere; color: var(--p-text-color); }
+.copy { justify-self: start; padding: 4px 10px; border: 1px solid var(--ds-border); border-radius: var(--ds-r-sm); background: transparent; font: inherit; font-size: var(--ds-t-caption); cursor: pointer; }

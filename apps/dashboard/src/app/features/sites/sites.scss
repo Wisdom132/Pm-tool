@@ -1,0 +1,7 @@
+:host { display: grid; gap: var(--ds-s-5); }
+.toolbar { display: flex; justify-content: flex-end; padding: var(--ds-s-2) 0; }
+.row-actions { text-align: right; }
+.skeletons { padding: var(--ds-s-4); display: grid; gap: var(--ds-s-4); }
+.skeleton-row { display: flex; gap: var(--ds-s-4); align-items: center; }
+code { font-family: var(--ds-font-mono, ui-monospace, monospace); font-size: var(--ds-t-caption); }
+:host ::ng-deep .verify-tag { margin-left: var(--ds-s-2); }

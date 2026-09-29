@@ -1,0 +1,6 @@
+<span class="icon"><i [class]="icon()"></i></span>
+<div class="copy">
+  <span class="title">{{ title() }}</span>
+  @if (description()) { <span class="desc">{{ description() }}</span> }
+</div>
+<div class="actions"><ng-content /></div>

@@ -1,0 +1,7 @@
+:host { display: grid; gap: var(--ds-s-5); }
+.action { font-size: var(--ds-t-caption); color: var(--p-primary-color); }
+.detail { display: block; font-size: var(--ds-t-caption); font-weight: 500; color: var(--p-text-muted-color); }
+.more { display: flex; justify-content: center; padding: var(--ds-s-3); border-top: 1px solid var(--ds-hairline); }
+.skeletons { padding: var(--ds-s-4); display: grid; gap: var(--ds-s-4); }
+.skeleton-row { display: flex; gap: var(--ds-s-4); align-items: center; }
+:host ::ng-deep .action-filter { min-width: 200px; }

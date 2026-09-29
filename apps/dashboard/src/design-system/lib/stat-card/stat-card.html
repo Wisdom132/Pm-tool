@@ -1,0 +1,11 @@
+<div class="ds-stat__head">
+  @if (icon()) { <span class="ds-stat__icon"><i [class]="icon()"></i></span> }
+  <span class="ds-stat__label">{{ label() }}</span>
+  <ng-content select="[dsStatAside]" />
+</div>
+<div class="ds-stat__row">
+  <span class="ds-stat__value">{{ value() }}</span>
+  @if (delta()) { <span class="ds-stat__delta" [attr.data-trend]="trend()">{{ delta() }}</span> }
+</div>
+@if (caption()) { <span class="ds-stat__caption" [attr.data-trend]="captionTrend()">{{ caption() }}</span> }
+<ng-content />

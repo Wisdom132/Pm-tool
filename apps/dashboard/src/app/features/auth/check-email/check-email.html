@@ -1,0 +1,18 @@
+<div class="auth-screen">
+  <span class="auth-icon"><i class="pi pi-envelope"></i></span>
+
+  <div class="auth-head">
+    <h1>Check your email</h1>
+    <p>
+      We sent a sign-in link to
+      <strong>{{ email() || 'your inbox' }}</strong>. It expires in 15 minutes.
+    </p>
+  </div>
+
+  <!-- Mock only: a real build would not offer a way past the email. -->
+  <p-button label="Continue (mock)" [fluid]="true" routerLink="/overview" />
+
+  <p class="auth-meta">
+    Wrong address? <a routerLink="/sign-in">Use a different one</a>
+  </p>
+</div>

@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { Observable } from 'rxjs';
-import { ApiError } from './api.client';
+import { ApiError } from './api-client';
 
 /**
  * What a screen is doing: loading, failed, or showing data.

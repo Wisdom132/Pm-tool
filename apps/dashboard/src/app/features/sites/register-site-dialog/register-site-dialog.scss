@@ -1,0 +1,29 @@
+.head { display: grid; gap: 2px; }
+.head strong { font-size: var(--ds-t-title); }
+.head small { font-size: var(--ds-t-caption); color: var(--p-text-muted-color); font-weight: 500; }
+
+.rail { display: flex; gap: 6px; margin-bottom: var(--ds-s-5); }
+.tick { flex: 1; height: 3px; border-radius: var(--ds-r-pill); background: var(--ds-border); transition: background var(--ds-trans-tap); }
+.tick.on { background: var(--p-primary-color); }
+
+.form { display: grid; gap: var(--ds-s-5); }
+.field { display: grid; gap: var(--ds-s-2); }
+.field label { font-size: var(--ds-t-caption); font-weight: 600; color: var(--p-text-color); }
+.field > small { font-size: var(--ds-t-caption); line-height: 1.5; color: var(--p-text-muted-color); }
+.opt { font-weight: 500; color: var(--p-text-muted-color); }
+.lede { margin: 0; font-size: var(--ds-t-body); line-height: 1.6; color: var(--p-text-color); }
+
+.choices { display: grid; gap: var(--ds-s-2); }
+.choice { display: flex; align-items: flex-start; gap: var(--ds-s-3); padding: var(--ds-s-3); border: 1px solid var(--ds-border); border-radius: var(--ds-r-md); cursor: pointer; }
+.choice.on { border-color: var(--p-primary-color); background: var(--ds-tint); }
+.choice span { display: grid; gap: 2px; }
+.choice strong { font-size: var(--ds-t-small); color: var(--p-text-color); }
+.choice small { font-size: var(--ds-t-caption); line-height: 1.5; color: var(--p-text-muted-color); }
+
+.snippet { display: flex; align-items: center; gap: var(--ds-s-2); padding: var(--ds-s-3); border: 1px solid var(--ds-border); border-radius: var(--ds-r-sm); background: var(--ds-muted-bg); }
+.snippet code { flex: 1; min-width: 0; overflow-x: auto; font-family: var(--ds-font-mono, ui-monospace, monospace); font-size: var(--ds-t-caption); color: var(--p-text-color); white-space: nowrap; }
+.or { display: flex; align-items: center; gap: var(--ds-s-3); color: var(--p-text-muted-color); font-size: var(--ds-t-caption); }
+.or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--ds-border); }
+
+.code { margin: 0; padding: var(--ds-s-4); border-radius: var(--ds-r-sm); background: #141416; color: #e4e4e7; font-family: var(--ds-font-mono, ui-monospace, monospace); font-size: var(--ds-t-caption); line-height: 1.6; overflow-x: auto; }
+:host ::ng-deep .nested { margin-left: var(--ds-s-6); }

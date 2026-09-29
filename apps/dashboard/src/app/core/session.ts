@@ -1,9 +1,9 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { ApiClient } from './api.client';
-import { AuthApi } from './api';
-import type { CurrentUser, OrganisationSummary } from './api.types';
+import { ApiClient } from './api-client';
+import { AuthApi } from './api/auth-api';
+import type { CurrentUser, OrganisationSummary } from './api-types';
 
 const STORED_ORG = 'ie.organisationId';
 

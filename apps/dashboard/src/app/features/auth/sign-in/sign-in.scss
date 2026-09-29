@@ -1,0 +1,5 @@
+.auth-form { display: grid; gap: var(--ds-s-4); }
+.auth-field { display: grid; gap: var(--ds-s-2); }
+.auth-field label { font-size: var(--ds-t-caption); font-weight: 600; color: var(--p-text-color); }
+.auth-divider-text { font-size: var(--ds-t-caption); color: var(--p-text-muted-color); }
+.auth-meta { margin: 0; font-size: var(--ds-t-caption); line-height: 1.5; color: var(--p-text-muted-color); text-align: center; }

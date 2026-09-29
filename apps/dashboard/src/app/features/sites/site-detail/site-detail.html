@@ -1,0 +1,125 @@
+@if (loader.state() === 'error') {
+  <div class="ds-surface">
+    <ds-error-state
+      title="Could not load this site"
+      [detail]="loader.error() ?? 'It may have been removed.'"
+      (retry)="reload()" />
+  </div>
+} @else if (loader.state() === 'loading') {
+  <div class="ds-surface panel">
+    <p-skeleton width="40%" height="1.4rem" />
+    <p-skeleton width="70%" height="1rem" />
+  </div>
+} @else if (site(); as s) {
+  <ds-page-header [title]="s.hostname" [subtitle]="s.repository + ' · ' + (s.branch ?? 'branch from the page')">
+    <a
+      class="p-button p-button-outlined p-button-secondary p-button-sm"
+      [href]="siteUrl(s)"
+      target="_blank"
+      rel="noopener"
+      dsActions>
+      Open site <i class="pi pi-external-link"></i>
+    </a>
+  </ds-page-header>
+
+  <a routerLink="/sites" class="back"><i class="pi pi-arrow-left"></i> All sites</a>
+
+  @if (message(); as note) {
+    <p-message [severity]="note.severity" [closable]="true" (onClose)="message.set(null)">
+      {{ note.text }}
+    </p-message>
+  }
+
+  @if (!s.site.verifiedAt) {
+    <p-message severity="info" [closable]="false">
+      This hostname is not verified. Add the TXT record
+      <code>_inline-edit.{{ s.hostname }}</code> with the value
+      <code>{{ s.site.verificationToken }}</code>, or a meta tag with the
+      same value. Nothing checks it yet, so editing works either way.
+    </p-message>
+  }
+
+  <section class="ds-surface panel">
+    <h2>Where it points</h2>
+
+    <div class="field">
+      <label for="name">Name</label>
+      <input pInputText id="name" [(ngModel)]="name" />
+      <small>Shown in lists. The hostname is what the editor matches on.</small>
+    </div>
+
+    <div class="field">
+      <label>Hostname</label>
+      <!-- Read-only: the hostname is the key the extension resolves
+           against, and the API has no way to change it. Register a new
+           environment instead. -->
+      <input pInputText [value]="s.hostname" disabled />
+    </div>
+
+    <div class="field">
+      <label>Repository</label>
+      <input pInputText [value]="s.repository" disabled />
+      <small>
+        Re-pointing a site at a different repository is not offered here —
+        it would silently redirect every future edit. Register a new site.
+      </small>
+    </div>
+
+    <div class="field">
+      <label for="branch">Branch</label>
+      <input
+        pInputText
+        id="branch"
+        [(ngModel)]="branch"
+        placeholder="Read from the page" />
+      <small>
+        Leaving this empty makes the branch come from the page, which is what
+        preview deploys need. Changing it sends every future edit on this
+        hostname somewhere else.
+      </small>
+    </div>
+
+    <div class="actions">
+      <p-button
+        [label]="saving() ? 'Saving…' : 'Save changes'"
+        size="small"
+        [disabled]="saving() || !changed(s)"
+        (onClick)="save(s)" />
+    </div>
+  </section>
+
+  <section class="ds-surface panel">
+    <h2>Who can edit it</h2>
+    @if (teams().length) {
+      <div class="teams">
+        @for (t of teams(); track t.id) {
+          <a class="team" [routerLink]="['/teams', t.id]">
+            <strong>{{ t.name }}</strong>
+            <small>{{ t.members.length }} {{ t.members.length === 1 ? 'person' : 'people' }}</small>
+          </a>
+        }
+      </div>
+    } @else {
+      <p class="muted">No team covers this site, so only admins can edit it.</p>
+    }
+  </section>
+
+  @if (isAdmin()) {
+  <section class="ds-surface panel">
+    <h2>Recent activity</h2>
+    @if (activity().length) {
+      <ul class="edits">
+        @for (e of activity(); track e.id) {
+          <li>
+            <code>{{ e.action }}</code>
+            <span>{{ e.actor ? (e.actor.name || e.actor.email) : 'a deleted account' }}</span>
+            <small>{{ e.createdAt | date: 'd MMM, HH:mm' }}</small>
+          </li>
+        }
+      </ul>
+    } @else {
+      <p class="muted">Nothing recorded for this hostname yet.</p>
+    }
+  </section>
+  }
+}

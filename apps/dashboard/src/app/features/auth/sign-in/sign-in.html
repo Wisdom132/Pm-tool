@@ -1,0 +1,40 @@
+<div class="auth-screen">
+  <div class="auth-head">
+    <h1>Sign in</h1>
+    <p>We'll email you a link. No password to remember.</p>
+  </div>
+
+  <form class="auth-form" (ngSubmit)="submit()">
+    <div class="auth-field">
+      <label for="email">Work email</label>
+      <input
+        pInputText
+        id="email"
+        type="email"
+        name="email"
+        autocomplete="email"
+        placeholder="you@company.com"
+        [(ngModel)]="email"
+        required />
+    </div>
+
+    <p-button
+      type="submit"
+      label="Email me a link"
+      [loading]="sending()"
+      [fluid]="true" />
+  </form>
+
+  <p-divider align="center"><span class="auth-divider-text">or</span></p-divider>
+
+  <p-button
+    label="Continue with GitHub"
+    icon="pi pi-github"
+    severity="secondary"
+    [outlined]="true"
+    [fluid]="true" />
+
+  <p class="auth-meta">
+    Connecting a repository is a separate step, and only an admin needs to do it.
+  </p>
+</div>

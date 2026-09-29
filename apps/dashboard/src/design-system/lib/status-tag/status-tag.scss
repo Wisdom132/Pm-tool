@@ -1,0 +1,11 @@
+:host { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--ds-r-pill); font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; background: var(--ds-muted-bg); color: var(--p-text-color); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--p-text-muted-color); }
+:host([data-tone='neutral']) .dot { background: var(--ds-success-dot); }
+:host([data-tone='success']) { background: var(--ds-success-soft); color: var(--ds-success-ink); }
+:host([data-tone='success']) .dot { background: var(--ds-success-dot); }
+:host([data-tone='warn']) { background: var(--ds-warn-soft); color: var(--ds-warn-ink); }
+:host([data-tone='warn']) .dot { background: var(--ds-warn-dot); }
+:host([data-tone='danger']) { background: var(--ds-danger-soft); color: var(--ds-danger-ink); }
+:host([data-tone='danger']) .dot { background: var(--ds-danger-dot); }
+:host([data-tone='info']) { background: var(--ds-info-soft); color: var(--p-primary-color); }
+:host([data-tone='info']) .dot { background: var(--p-primary-color); }

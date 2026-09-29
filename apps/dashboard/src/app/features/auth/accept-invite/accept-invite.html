@@ -1,0 +1,38 @@
+<div class="auth-screen">
+  @switch (state()) {
+    @case ('valid') {
+      <span class="auth-icon"><i class="pi pi-users"></i></span>
+      <div class="auth-head">
+        <h1>Join {{ organisation }}</h1>
+        <p>
+          <strong>{{ invitedBy }}</strong> invited
+          <strong>{{ email }}</strong> as {{ role === 'admin' ? 'an admin' : 'an editor' }}.
+        </p>
+      </div>
+
+      <ul class="can">
+        <li><i class="pi pi-check"></i> Edit copy on the sites your teams cover</li>
+        <li><i class="pi pi-check"></i> Open pull requests and leave feedback</li>
+        @if (role === 'admin') {
+          <li><i class="pi pi-check"></i> Connect providers, register sites, invite people</li>
+        } @else {
+          <li class="cannot"><i class="pi pi-times"></i> Cannot change where a site points</li>
+        }
+      </ul>
+
+      <p-button label="Accept invitation" [fluid]="true" [loading]="accepting()" (onClick)="accept()" />
+      <p class="auth-meta">Not you? Ignore this email and nothing happens.</p>
+    }
+
+    @case ('expired') {
+      <span class="auth-icon warn"><i class="pi pi-clock"></i></span>
+      <div class="auth-head">
+        <h1>This invitation expired</h1>
+        <p>
+          Invitations last 7 days. Ask {{ invitedBy }} to send another — it
+          takes them a moment.
+        </p>
+      </div>
+    }
+  }
+</div>

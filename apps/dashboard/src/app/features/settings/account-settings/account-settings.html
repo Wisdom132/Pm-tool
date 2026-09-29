@@ -1,0 +1,115 @@
+<ds-page-header title="Your account" subtitle="How you appear to your team, and where you are signed in" />
+
+<section class="ds-surface panel">
+  <h2>Profile</h2>
+  <div class="field">
+    <label for="name">Name</label>
+    <input pInputText id="name" [(ngModel)]="name" />
+  </div>
+  <small class="hint">
+    Used to credit you in a pull request. Without a name we use the part of
+    your address before the @ — never the whole address, because a pull
+    request can land in a public repository.
+  </small>
+  <div class="field">
+    <label for="email">Email</label>
+    <input pInputText id="email" [value]="email()" disabled />
+    <small>
+      Your address is your identity here — it is how the sign-in link
+      reaches you, so it cannot be changed from this screen.
+    </small>
+  </div>
+  @if (message(); as note) {
+    <p-message [severity]="note.severity" [closable]="true" (onClose)="message.set(null)">
+      {{ note.text }}
+    </p-message>
+  }
+  <div class="actions">
+    <p-button
+      [label]="saving() ? 'Saving…' : 'Save changes'"
+      size="small"
+      [disabled]="saving()"
+      (onClick)="save()" />
+  </div>
+</section>
+
+<section class="ds-surface panel">
+  <h2>Browser extension</h2>
+  <p class="hint">
+    The extension signs in to Inline Edit, not to GitHub — so no
+    repository credential ever reaches your browser. Create a token here
+    and paste it into the extension popup.
+  </p>
+
+  @if (issued(); as token) {
+    <p-message severity="success" [closable]="false">
+      <span class="issued">
+        <strong>Copy this now — it is not shown again.</strong>
+        <code>{{ token }}</code>
+        <button type="button" class="copy" (click)="copy(token)">
+          {{ copied() ? 'Copied' : 'Copy' }}
+        </button>
+      </span>
+    </p-message>
+  }
+
+  <div class="field">
+    <label for="label">Label</label>
+    <input pInputText id="label" [(ngModel)]="label" placeholder="Chrome on my laptop" />
+    <small>So you can tell one browser from another in the list below.</small>
+  </div>
+
+  <div class="actions">
+    <p-button
+      [label]="creating() ? 'Creating…' : 'Create a token'"
+      size="small"
+      [disabled]="creating()"
+      (onClick)="createToken()" />
+  </div>
+
+  @if (tokens().length) {
+    <ul class="sessions">
+      @for (t of tokens(); track t.id) {
+        <li>
+          <div>
+            <strong>{{ t.userAgent || 'Browser extension' }}</strong>
+            <small>
+              created {{ t.createdAt | date: 'd MMM y' }} ·
+              @if (t.lastSeenAt) {
+                last used {{ t.lastSeenAt | date: 'd MMM, HH:mm' }}
+              } @else {
+                never used
+              }
+            </small>
+          </div>
+          <p-button
+            label="Revoke"
+            [text]="true"
+            size="small"
+            severity="danger"
+            [disabled]="revoking() === t.id"
+            (onClick)="revoke(t)" />
+        </li>
+      }
+    </ul>
+  }
+</section>
+
+<section class="ds-surface panel">
+  <h2>Sessions</h2>
+  <p class="hint">
+    Sessions last 30 days. There is no per-device list for dashboard
+    sign-ins — the API can revoke them all or the current one, not name
+    them — so the honest control is the blunt one. Extension tokens are
+    listed individually above.
+  </p>
+  <div class="actions">
+    <p-button
+      [label]="signingOut() ? 'Signing out…' : 'Sign out everywhere else'"
+      [outlined]="true"
+      severity="secondary"
+      size="small"
+      [disabled]="signingOut()"
+      (onClick)="signOutEverywhere()" />
+  </div>
+</section>

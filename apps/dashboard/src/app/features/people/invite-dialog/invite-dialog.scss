@@ -1,0 +1,25 @@
+.head { display: grid; gap: 2px; }
+.head strong { font-size: var(--ds-t-title); }
+.head small { font-size: var(--ds-t-caption); color: var(--p-text-muted-color); font-weight: 500; }
+
+.form { display: grid; gap: var(--ds-s-5); }
+.field { display: grid; gap: var(--ds-s-2); }
+.field label { font-size: var(--ds-t-caption); font-weight: 600; color: var(--p-text-color); }
+.field > small { font-size: var(--ds-t-caption); color: var(--p-text-muted-color); }
+
+.entry { display: grid; gap: var(--ds-s-2); }
+.chips { display: flex; flex-wrap: wrap; gap: var(--ds-s-2); }
+
+.roles { display: grid; gap: var(--ds-s-2); }
+.role { display: flex; align-items: flex-start; gap: var(--ds-s-3); padding: var(--ds-s-3); border: 1px solid var(--ds-border); border-radius: var(--ds-r-md); background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.role.on { border-color: var(--p-primary-color); background: var(--ds-tint); }
+.radio { width: 16px; height: 16px; margin-top: 2px; flex: none; border: 2px solid var(--ds-border-strong, #94a3b8); border-radius: 50%; }
+.radio.on { border-color: var(--p-primary-color); border-width: 5px; }
+.role .text { display: grid; gap: 2px; }
+.role strong { font-size: var(--ds-t-small); color: var(--p-text-color); }
+.role small { font-size: var(--ds-t-caption); line-height: 1.5; color: var(--p-text-muted-color); }
+
+.done { display: grid; justify-items: center; gap: var(--ds-s-3); padding: var(--ds-s-8) var(--ds-s-4); text-align: center; }
+.done strong { font-size: var(--ds-t-title); }
+.done small { max-width: 36ch; font-size: var(--ds-t-small); line-height: 1.55; color: var(--p-text-muted-color); }
+.tick { width: 48px; height: 48px; border-radius: 50%; background: var(--ds-tint); color: var(--p-primary-color); display: grid; place-items: center; font-size: 18px; }

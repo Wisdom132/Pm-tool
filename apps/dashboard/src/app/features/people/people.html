@@ -1,0 +1,165 @@
+<ds-page-header title="People" subtitle="Everyone in this organisation, and what they can do">
+  @if (isAdmin()) {
+    <p-button label="Invite people" icon="pi pi-plus" size="small" dsActions (onClick)="inviting.set(true)" />
+  }
+</ds-page-header>
+
+@if (error()) {
+  <p-message severity="error" [closable]="true" (onClose)="error.set('')">{{ error() }}</p-message>
+}
+
+@if (loader.state() === 'error') {
+  <div class="ds-surface">
+    <ds-error-state
+      title="Could not load the people in this organisation"
+      [detail]="loader.error() ?? 'The request for this list failed.'"
+      (retry)="reload()" />
+  </div>
+} @else if (loader.state() === 'loading') {
+  <div class="ds-surface skeletons">
+    @for (n of [1, 2, 3]; track n) {
+      <div class="skeleton-row">
+        <p-skeleton shape="circle" size="2rem" />
+        <p-skeleton width="40%" height="1rem" />
+        <p-skeleton width="18%" height="1rem" />
+      </div>
+    }
+  </div>
+} @else {
+<section class="block">
+  <h2 class="block-title">
+    Members <span class="count">{{ members().length }}</span>
+  </h2>
+
+  <div class="ds-surface">
+    <p-table [value]="members()" styleClass="ds-table" [rowHover]="true" [tableStyle]="{ 'min-width': '720px' }">
+      <ng-template #header>
+        <tr>
+          <th>Person</th>
+          <th>Role</th>
+          <th>Last seen</th>
+          <th></th>
+        </tr>
+      </ng-template>
+
+      <ng-template #body let-m>
+        <tr>
+          <td>
+            <div class="person">
+              <p-avatar [label]="initial(m)" shape="circle" />
+              <div class="person-text">
+                <span class="ds-cell-strong">{{ m.name || m.email }}</span>
+                <span class="ds-cell-muted">{{ m.email }}</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <p-tag
+              [value]="m.role === 'admin' ? 'Admin' : 'Editor'"
+              [severity]="m.role === 'admin' ? 'info' : 'secondary'"
+              [rounded]="true" />
+          </td>
+          <td class="ds-cell-muted">{{ m.lastSeenAt ? (m.lastSeenAt | date: 'd MMM, HH:mm') : '—' }}</td>
+          <td class="row-actions">
+            @if (isAdmin() && m.id !== currentUserId()) {
+              <p-select
+                [options]="roles"
+                [ngModel]="m.role"
+                (ngModelChange)="changeRole(m, $event)"
+                optionLabel="label"
+                optionValue="value"
+                size="small"
+                [disabled]="busy() === m.id"
+                styleClass="role-select" />
+              <p-button
+                icon="pi pi-times"
+                [text]="true"
+                [rounded]="true"
+                severity="danger"
+                size="small"
+                ariaLabel="Remove from organisation"
+                [disabled]="busy() === m.id"
+                (onClick)="confirmRemove(m)" />
+            } @else if (m.id === currentUserId()) {
+              <span class="ds-cell-muted">you</span>
+            }
+          </td>
+        </tr>
+      </ng-template>
+
+      <ng-template #emptymessage>
+        <tr>
+          <td colspan="4">
+            <ds-empty-state
+              icon="pi pi-users"
+              title="Nobody here yet"
+              description="Invite the people who write your copy. They sign in with their email — no GitHub account needed."
+              size="sm">
+              <p-button label="Invite people" icon="pi pi-plus" size="small" (onClick)="inviting.set(true)" />
+            </ds-empty-state>
+          </td>
+        </tr>
+      </ng-template>
+    </p-table>
+  </div>
+</section>
+
+@if (invitations().length) {
+  <section class="block">
+    <h2 class="block-title">
+      Pending invitations <span class="count">{{ invitations().length }}</span>
+    </h2>
+
+    <div class="ds-surface">
+      <p-table [value]="invitations()" styleClass="ds-table" [rowHover]="true" [tableStyle]="{ 'min-width': '720px' }">
+        <ng-template #header>
+          <tr>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Expires</th>
+            <th></th>
+          </tr>
+        </ng-template>
+
+        <ng-template #body let-i>
+          <tr>
+            <td class="ds-cell-strong">{{ i.email }}</td>
+            <td>
+              <p-tag
+                [value]="i.role === 'admin' ? 'Admin' : 'Editor'"
+                [severity]="i.role === 'admin' ? 'info' : 'secondary'"
+                [rounded]="true" />
+            </td>
+            <td class="ds-cell-muted">{{ i.expiresAt | date: 'd MMM y' }}</td>
+            <td class="row-actions">
+              @if (isAdmin()) {
+                <!-- No Resend: the API has no such endpoint, and inviting
+                     the same address again supersedes the old invitation,
+                     which is the same thing with one fewer concept. -->
+                <p-button
+                  label="Revoke"
+                  [text]="true"
+                  size="small"
+                  severity="danger"
+                  [disabled]="busy() === i.id"
+                  (onClick)="revokeInvitation(i)" />
+              }
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </div>
+  </section>
+}
+
+<p class="note">
+  An <strong>editor</strong> opens pull requests and leaves feedback. Only an
+  <strong>admin</strong> can connect a provider or re-point a site at a
+  different repository — which is the one change here that could quietly
+  send edits somewhere else.
+</p>
+
+}
+
+<app-invite-dialog [(visible)]="inviting" (invited)="reload()" />
+<p-confirmdialog />

@@ -1,0 +1,114 @@
+<p-dialog
+  [(visible)]="visible"
+  [modal]="true"
+  [draggable]="false"
+  [dismissableMask]="step() !== 'authorising'"
+  [closable]="step() !== 'authorising'"
+  [style]="{ width: '540px' }"
+  (onHide)="reset()">
+  <ng-template #header>
+    <div class="head">
+      <strong>{{ heading() }}</strong>
+      <small>{{ subheading() }}</small>
+    </div>
+  </ng-template>
+
+  <!-- ── 1. Which provider ─────────────────────────────── -->
+  @if (step() === 'choose') {
+    <div class="providers">
+      @for (p of providers; track p.id) {
+        <button
+          type="button"
+          class="provider"
+          [class.unavailable]="!p.available"
+          [disabled]="!p.available"
+          (click)="choose(p)">
+          <span class="mark"><i [class]="p.icon"></i></span>
+          <span class="text">
+            <strong>{{ p.name }}</strong>
+            <small>{{ p.blurb }}</small>
+          </span>
+          @if (p.available) {
+            <i class="pi pi-chevron-right"></i>
+          } @else {
+            <span class="soon">Soon</span>
+          }
+        </button>
+      }
+    </div>
+  }
+
+  <!-- ── 2. What we are asking for ─────────────────────── -->
+  @if (step() === 'review' && selected(); as p) {
+    <div class="review">
+      <p class="lede">
+        You'll be sent to {{ p.name }} to approve access. Pick the
+        repositories you want editable — you can change that later.
+      </p>
+
+      <ul class="scopes">
+        <li>
+          <i class="pi pi-check"></i>
+          <div>
+            <strong>Read repository contents</strong>
+            <small>To show the file an element came from, and its styles.</small>
+          </div>
+        </li>
+        <li>
+          <i class="pi pi-check"></i>
+          <div>
+            <strong>Create branches and {{ p.changeNoun }}s</strong>
+            <small>Every edit lands as a {{ p.changeNoun }} for review. Nothing is pushed to your default branch.</small>
+          </div>
+        </li>
+        <li class="denied">
+          <i class="pi pi-times"></i>
+          <div>
+            <strong>No direct writes, ever</strong>
+            <small>We never commit to a branch outside a {{ p.changeNoun }}, and never force-push.</small>
+          </div>
+        </li>
+      </ul>
+
+      <p-message severity="secondary" [closable]="false">
+        Only an admin does this, once. Everyone else on your team edits
+        without signing in to {{ p.name }} at all.
+      </p-message>
+    </div>
+  }
+
+  <!-- ── 3. Off to the provider ────────────────────────── -->
+  @if (step() === 'authorising') {
+    <div class="waiting">
+      <p-progressspinner styleClass="spin" strokeWidth="4" />
+      <strong>Taking you to {{ selected()?.name }}…</strong>
+      <small>Approve the installation, and you will be sent back here.</small>
+    </div>
+  }
+
+  @if (step() === 'failed') {
+    <div class="waiting">
+      <span class="cross"><i class="pi pi-times"></i></span>
+      <strong>Could not start the connection</strong>
+      <small>{{ error() }}</small>
+    </div>
+  }
+
+  <ng-template #footer>
+    @switch (step()) {
+      @case ('choose') {
+        <p-button label="Cancel" [text]="true" severity="secondary" (onClick)="visible.set(false)" />
+      }
+      @case ('review') {
+        <p-button label="Back" [text]="true" severity="secondary" (onClick)="step.set('choose')" />
+        <p-button [label]="'Continue to ' + selected()?.name" icon="pi pi-external-link" iconPos="right" (onClick)="authorise()" />
+      }
+      @case ('authorising') {
+        <p-button label="Cancel" [text]="true" severity="secondary" (onClick)="step.set('review')" />
+      }
+      @case ('failed') {
+        <p-button label="Back" [text]="true" severity="secondary" (onClick)="step.set('review')" />
+      }
+    }
+  </ng-template>
+</p-dialog>

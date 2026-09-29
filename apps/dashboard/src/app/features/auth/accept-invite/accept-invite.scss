@@ -1,0 +1,8 @@
+.auth-icon { width: 48px; height: 48px; border-radius: var(--ds-r-lg); background: var(--ds-tint); color: var(--p-primary-color); display: grid; place-items: center; font-size: 18px; }
+.auth-icon.warn { background: var(--ds-warn-soft); color: var(--ds-warn-ink); }
+.can { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--ds-s-2); }
+.can li { display: flex; align-items: flex-start; gap: var(--ds-s-2); font-size: var(--ds-t-small); line-height: 1.5; color: var(--p-text-color); }
+.can i { margin-top: 3px; color: var(--ds-success-ink); font-size: 12px; }
+.can .cannot { color: var(--p-text-muted-color); }
+.can .cannot i { color: var(--p-text-muted-color); }
+.auth-meta { margin: 0; font-size: var(--ds-t-caption); color: var(--p-text-muted-color); text-align: center; }

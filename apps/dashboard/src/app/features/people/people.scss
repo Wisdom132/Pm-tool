@@ -1,0 +1,12 @@
+:host { display: grid; gap: var(--ds-s-6); }
+.block { display: grid; gap: var(--ds-s-3); }
+.block-title { font-size: var(--ds-t-title); font-weight: 700; display: flex; align-items: center; gap: var(--ds-s-2); }
+.count { padding: 1px 8px; border-radius: var(--ds-r-pill); background: var(--ds-muted-bg); font-size: var(--ds-t-caption); font-weight: 600; color: var(--p-text-muted-color); }
+.person { display: flex; align-items: center; gap: var(--ds-s-3); }
+.person-text { display: grid; gap: 1px; }
+.row-actions { text-align: right; white-space: nowrap; }
+.note { margin: 0; max-width: 72ch; font-size: var(--ds-t-caption); line-height: 1.6; color: var(--p-text-muted-color); }
+.skeletons { padding: var(--ds-s-4); display: grid; gap: var(--ds-s-4); }
+.skeleton-row { display: flex; gap: var(--ds-s-3); align-items: center; }
+.row-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--ds-s-2); }
+:host ::ng-deep .role-select { min-width: 116px; }

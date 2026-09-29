@@ -1,0 +1,99 @@
+<div class="backdrop" (click)="mobileOpen.set(false)"></div>
+
+<aside>
+  <div class="brand">
+    <span class="logo">IE</span>
+    @if (!collapsed()) { <span class="name">Inline Edit</span> }
+    <p-button class="collapse-btn" [icon]="collapsed() ? 'pi pi-angle-right' : 'pi pi-angle-left'" [text]="true" [rounded]="true" severity="secondary" size="small"
+      (onClick)="collapsed.set(!collapsed())" [ariaLabel]="collapsed() ? 'Expand sidebar' : 'Collapse sidebar'" />
+    <p-button class="drawer-close" icon="pi pi-times" [text]="true" [rounded]="true" severity="secondary" size="small"
+      (onClick)="mobileOpen.set(false)" ariaLabel="Close menu" />
+  </div>
+
+  @if (showOrganisation()) {
+  <button class="org" type="button" (click)="orgMenu.toggle($event)"
+    [attr.aria-haspopup]="true" [attr.aria-expanded]="false">
+    <span class="org-mark">{{ organisation().charAt(0) }}</span>
+    @if (!collapsed()) {
+      <span class="org-text"><strong>{{ organisation() }}</strong><small>{{ organisationMeta() }}</small></span>
+      <i class="pi pi-chevron-down"></i>
+    }
+  </button>
+
+  <p-popover #orgMenu styleClass="ds-org-menu">
+    <div class="org-menu">
+      <span class="org-menu-title">Organisations</span>
+      @for (o of organisations(); track o.id) {
+        <button type="button" class="org-option" [class.on]="o.id === organisationId()"
+          (click)="switchOrganisation.emit(o.id); orgMenu.hide()">
+          <span class="org-mark">{{ o.name.charAt(0) }}</span>
+          <span class="org-text">
+            <strong>{{ o.name }}</strong>
+            <small>{{ o.meta }}</small>
+          </span>
+          @if (o.id === organisationId()) { <i class="pi pi-check"></i> }
+        </button>
+      }
+      <div class="org-menu-sep"></div>
+      <button type="button" class="org-option plain" (click)="createOrganisation.emit(); orgMenu.hide()">
+        <span class="org-mark ghost"><i class="pi pi-plus"></i></span>
+        <span class="org-text"><strong>New organisation</strong></span>
+      </button>
+    </div>
+  </p-popover>
+  }
+
+  <nav>
+    @for (g of nav(); track $index) {
+      <div class="group">
+        @if (g.title && !collapsed()) { <span class="group-title">{{ g.title }}</span> }
+        @for (item of g.items; track item.id) {
+          <button type="button" class="item" [class.active]="isActive(item)" (click)="onNavigate(item.children?.[0]?.id ?? item.id)"
+            [pTooltip]="collapsed() ? item.label : ''" tooltipPosition="right">
+            <i [class]="item.icon"></i>
+            @if (!collapsed()) { <span>{{ item.label }}</span> }
+            @if (item.children && !collapsed()) { <i class="pi pi-chevron-down caret" [class.open]="isActive(item)"></i> }
+          </button>
+          @if (item.children && isActive(item) && !collapsed()) {
+            <div class="subs">
+              @for (c of item.children; track c.id) {
+                <button type="button" class="sub" [class.active]="active() === c.id" (click)="onNavigate(c.id)">{{ c.label }}</button>
+              }
+            </div>
+          }
+        }
+      </div>
+    }
+  </nav>
+
+  <div class="foot">
+    <button type="button" class="item" (click)="onNavigate('settings')"><i class="pi pi-cog"></i>@if (!collapsed()) {<span>Settings</span>}</button>
+    <button type="button" class="item danger" (click)="logout.emit()"><i class="pi pi-sign-out"></i>@if (!collapsed()) {<span>Log out</span>}</button>
+  </div>
+</aside>
+
+<div class="main">
+  <header>
+    <p-button class="hamburger" icon="pi pi-bars" [text]="true" [rounded]="true" severity="secondary" size="small"
+      (onClick)="mobileOpen.set(true)" ariaLabel="Open menu" />
+    <div class="crumbs"><ng-content select="[dsCrumbs]" /></div>
+    <p-iconfield class="search">
+      <p-inputicon class="pi pi-search" />
+      <input pInputText type="search" placeholder="Search sites and feedback…" pSize="small"
+        [value]="''" (keydown.enter)="search.emit($any($event.target).value)" />
+    </p-iconfield>
+    <p-button [icon]="dark() ? 'pi pi-sun' : 'pi pi-moon'" [rounded]="true" [outlined]="true" severity="secondary" size="small" (onClick)="dark.set(!dark())" ariaLabel="Toggle theme" />
+    @if (notifications() > 0) {
+      <p-button icon="pi pi-bell" [rounded]="true" [outlined]="true" severity="secondary" size="small"
+        [badge]="notifications().toString()" badgeSeverity="danger" ariaLabel="Notifications" />
+    } @else {
+      <p-button icon="pi pi-bell" [rounded]="true" [outlined]="true" severity="secondary" size="small" ariaLabel="Notifications" />
+    }
+    <span class="divider"></span>
+    <button type="button" class="user" (click)="onNavigate('account')" aria-label="Your account">
+      <p-avatar [label]="user().charAt(0)" shape="circle" />
+      <span class="user-text"><strong>{{ user() }}</strong><small>{{ role() }}</small></span>
+    </button>
+  </header>
+  <main><div class="content"><ng-content /></div></main>
+</div>

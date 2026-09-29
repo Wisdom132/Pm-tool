@@ -1,0 +1,20 @@
+:host { display: grid; gap: var(--ds-s-4); }
+.back { display: inline-flex; align-items: center; gap: var(--ds-s-2); font-size: var(--ds-t-caption); color: var(--p-text-muted-color); justify-self: start; }
+.panel { padding: var(--ds-s-5); display: grid; gap: var(--ds-s-4); }
+.panel h2 { font-size: var(--ds-t-title); font-weight: 700; }
+.panel header { display: flex; align-items: center; gap: var(--ds-s-2); flex-wrap: wrap; }
+.muted { font-size: var(--ds-t-caption); color: var(--p-text-muted-color); }
+.message { margin: 0; font-size: var(--ds-t-body); line-height: 1.65; color: var(--p-text-color); }
+.where { display: flex; align-items: center; gap: var(--ds-s-2); font-size: var(--ds-t-caption); color: var(--p-text-muted-color); }
+.where code { font-size: var(--ds-t-caption); color: var(--p-primary-color); }
+.context { margin: 0; display: grid; gap: var(--ds-s-2); padding-top: var(--ds-s-3); border-top: 1px solid var(--ds-hairline); }
+.context > div { display: grid; grid-template-columns: 110px 1fr; gap: var(--ds-s-3); align-items: baseline; }
+.context dt { font-size: var(--ds-t-caption); font-weight: 600; color: var(--p-text-muted-color); }
+.context dd { margin: 0; font-size: var(--ds-t-caption); color: var(--p-text-color); min-width: 0; overflow-wrap: anywhere; }
+.context .ua { color: var(--p-text-muted-color); }
+.field { display: grid; gap: var(--ds-s-2); }
+.field label { font-size: var(--ds-t-caption); font-weight: 600; color: var(--p-text-color); }
+.field small { font-size: var(--ds-t-caption); line-height: 1.5; color: var(--p-text-muted-color); }
+.promote { display: flex; gap: var(--ds-s-2); }
+.promote input { flex: 1; }
+.promoted { margin: 0; display: flex; align-items: center; gap: var(--ds-s-2); font-size: var(--ds-t-caption); }

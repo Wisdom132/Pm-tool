@@ -1,0 +1,11 @@
+<div class="text">
+  @if (eyebrow()) { <span class="eyebrow">{{ eyebrow() }}</span> }
+  <h1 class="title">{{ title() }}</h1>
+  @if (subtitle() || live()) {
+    <div class="sub">
+      @if (live()) { <span class="live" aria-hidden="true"></span> }
+      <span>{{ subtitle() }}</span>
+    </div>
+  }
+</div>
+<div class="actions"><ng-content select="[dsActions]" /></div>

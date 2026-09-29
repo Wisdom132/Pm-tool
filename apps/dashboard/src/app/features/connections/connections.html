@@ -1,0 +1,81 @@
+<ds-page-header title="Connections" subtitle="Where your repositories live">
+  @if (isAdmin()) {
+    <p-button label="Connect a provider" icon="pi pi-plus" size="small" dsActions (onClick)="connecting.set(true)" />
+  }
+</ds-page-header>
+
+@if (banner(); as note) {
+  <p-message [severity]="note.severity" [closable]="true" (onClose)="banner.set(null)">
+    {{ note.text }}
+  </p-message>
+}
+
+@if (loader.state() === 'error') {
+  <div class="ds-surface">
+    <ds-error-state
+      title="Could not load your connections"
+      [detail]="loader.error() ?? 'The request for this list failed.'"
+      (retry)="reload()" />
+  </div>
+} @else if (loader.state() === 'loading') {
+  <div class="grid">
+    @for (n of [1, 2]; track n) {
+      <div class="ds-surface card">
+        <p-skeleton width="60%" height="1.2rem" />
+        <p-skeleton width="40%" height="0.8rem" />
+      </div>
+    }
+  </div>
+} @else if (loader.data().length) {
+  <div class="grid">
+    @for (c of loader.data(); track c.id) {
+      <div class="ds-surface card" [class.revoked]="c.revokedAt">
+        <div class="card-head">
+          <span class="mark"><i [class]="icon(c.provider)"></i></span>
+          <div class="titles">
+            <strong>{{ c.accountLogin }}</strong>
+            <small>{{ c.provider }} · {{ siteCount(c) }}</small>
+          </div>
+          <p-tag
+            [value]="c.revokedAt ? 'Revoked' : 'Active'"
+            [severity]="c.revokedAt ? 'secondary' : 'success'"
+            [rounded]="true" />
+        </div>
+        <div class="card-foot">
+          <span class="ds-cell-muted">
+            @if (c.createdBy) {
+              Connected by {{ c.createdBy.name || c.createdBy.email }} on {{ c.createdAt | date: 'd MMM y' }}
+            } @else {
+              Connected on {{ c.createdAt | date: 'd MMM y' }}
+            }
+          </span>
+          @if (!c.revokedAt && isAdmin()) {
+            <p-button
+              [label]="revoking() === c.id ? 'Revoking…' : 'Revoke'"
+              size="small"
+              [text]="true"
+              severity="danger"
+              [disabled]="revoking() !== null"
+              (onClick)="revoke(c)" />
+          }
+        </div>
+      </div>
+    }
+  </div>
+} @else {
+  <div class="ds-surface">
+    <ds-empty-state
+      icon="pi pi-link"
+      title="No providers connected"
+      description="Connect GitHub, GitLab or Bitbucket once, and every editor on your team can open pull requests without signing in to it themselves.">
+      @if (isAdmin()) {
+        <p-button label="Connect a provider" icon="pi pi-plus" size="small" (onClick)="connecting.set(true)" />
+      }
+    </ds-empty-state>
+  </div>
+}
+
+<app-connect-provider-dialog
+  [(visible)]="connecting"
+  (connected)="reload()"
+  (registerSite)="goToSites()" />

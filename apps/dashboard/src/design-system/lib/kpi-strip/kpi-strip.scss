@@ -1,0 +1,5 @@
+:host { display: block; container-type: inline-size; overflow: hidden; }
+.grid { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 1px; background: var(--ds-border); }
+.grid > * { background: var(--p-content-background); }
+@container (max-width: 720px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 380px) { .grid { grid-template-columns: 1fr; } }

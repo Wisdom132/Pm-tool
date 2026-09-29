@@ -1,0 +1,89 @@
+<ds-page-header title="Overview" subtitle="Sites, edits and feedback across your organisation" />
+
+<div class="stats">
+  <ds-stat-card
+    label="Sites"
+    [value]="sites().length.toString()"
+    icon="pi pi-globe"
+    [caption]="siteCaption()" />
+  <ds-stat-card
+    label="Open feedback"
+    [value]="openFeedback().toString()"
+    icon="pi pi-comments"
+    [caption]="feedbackCaption()" />
+  <ds-stat-card
+    label="Change requests"
+    [value]="changeRequests().toString()"
+    icon="pi pi-github"
+    caption="opened from the editor" />
+  <ds-stat-card
+    label="People"
+    [value]="memberCount().toString()"
+    icon="pi pi-users"
+    [caption]="peopleCaption()" />
+</div>
+
+<div class="two-up">
+  <section class="ds-surface panel">
+    <header>
+      <h2>Recent feedback</h2>
+      <p-button label="View all" size="small" [text]="true" routerLink="/feedback" />
+    </header>
+    @if (loading()) {
+      <p-skeleton width="80%" height="1rem" />
+    } @else if (feedback().length) {
+      <ul>
+        @for (f of feedback().slice(0, 3); track f.id) {
+          <li>
+            <p-tag [value]="f.status" [severity]="f.status === 'new' ? 'info' : f.status === 'triaged' ? 'warn' : 'success'" [rounded]="true" />
+            <div class="line">
+              <span class="text">{{ f.message }}</span>
+              <small>
+                {{ f.author.name || f.author.email || 'Anonymous' }} · {{ f.createdAt | date: 'd MMM' }}
+              </small>
+            </div>
+          </li>
+        }
+      </ul>
+    } @else {
+      <ds-empty-state
+        icon="pi pi-comments"
+        title="No feedback yet"
+        description="Comments left on your sites arrive here."
+        size="sm" />
+    }
+  </section>
+
+  @if (isAdmin()) {
+  <section class="ds-surface panel">
+    <header>
+      <h2>Recent activity</h2>
+      <p-button label="View all" size="small" [text]="true" routerLink="/audit" />
+    </header>
+    @if (loading()) {
+      <p-skeleton width="80%" height="1rem" />
+    } @else if (audit().length) {
+      <ul>
+        @for (a of audit().slice(0, 4); track a.id) {
+          <li>
+            <code class="action">{{ a.action }}</code>
+            <div class="line">
+              <span class="text">{{ a.subject ?? '—' }}</span>
+              <small>
+                {{ a.actor ? (a.actor.name || a.actor.email) : 'a deleted account' }}
+                · {{ a.createdAt | date: 'd MMM, HH:mm' }}
+              </small>
+            </div>
+          </li>
+        }
+      </ul>
+    } @else {
+      <ds-empty-state
+        icon="pi pi-history"
+        title="Nothing recorded yet"
+        description="Connecting a provider or registering a site lands here."
+        size="sm" />
+    }
+  </section>
+  }
+</div>

@@ -4,9 +4,9 @@ import { Theme } from './core/theme';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
   templateUrl: './app.html',
-  styleUrl: './app.scss'
+  styleUrl: './app.scss',
+  imports: [RouterOutlet],
 })
 export class App {
   // Constructed here, at the root, rather than by whichever layout happens to

@@ -1,0 +1,22 @@
+<ds-page-header title="Integrations" subtitle="Send feedback and edits where your team already works" />
+
+<div class="grid">
+  @for (i of available; track i.id) {
+    <div class="ds-surface card">
+      <span class="mark"><i [class]="i.icon"></i></span>
+      <div class="body">
+        <div class="title-row">
+          <strong>{{ i.name }}</strong>
+          @if (i.connected) { <p-tag value="Connected" severity="success" [rounded]="true" /> }
+        </div>
+        <p>{{ i.blurb }}</p>
+      </div>
+      <p-button
+        [label]="i.connected ? 'Manage' : 'Connect'"
+        size="small"
+        [outlined]="!i.connected"
+        [text]="i.connected"
+        severity="secondary" />
+    </div>
+  }
+</div>

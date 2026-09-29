@@ -1,0 +1,11 @@
+:host { display: grid; gap: var(--ds-s-5); }
+.panel { padding: var(--ds-s-5); display: grid; gap: var(--ds-s-4); max-width: 640px; }
+.panel h2 { font-size: var(--ds-t-title); font-weight: 700; }
+.panel p { margin: 0; font-size: var(--ds-t-small); line-height: 1.6; color: var(--p-text-muted-color); }
+.field { display: grid; gap: var(--ds-s-2); }
+.field label { font-size: var(--ds-t-caption); font-weight: 600; color: var(--p-text-color); }
+.field small { font-size: var(--ds-t-caption); color: var(--p-text-muted-color); }
+.slug { display: flex; align-items: center; gap: var(--ds-s-2); font-size: var(--ds-t-small); color: var(--p-text-muted-color); }
+.slug input { flex: 1; }
+.actions { display: flex; justify-content: flex-start; }
+.danger { border-color: color-mix(in srgb, var(--ds-danger-ink) 24%, transparent); }
