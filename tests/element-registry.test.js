@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   hasDirectText,
   domPath,
+  elementForDomPath,
   editKey,
   findEditableElements,
   editableAncestors,
@@ -293,5 +294,61 @@ describe('describeElement — elements with no text of their own', () => {
   it('does not let an attribute outrank real text', () => {
     mount('<button id="a" title="Submit the form">Send</button>');
     expect(describeElement(document.getElementById('a'))).toBe('button · Send');
+  });
+});
+
+// ============================================================
+//  dom: path resolution
+//
+//  What lets an edit on an *unannotated* element be found again
+//  at undo time, when nothing is decorated and the pointer is
+//  anywhere. The path and the resolver must agree exactly, or
+//  undo clears the record without restoring the element.
+// ============================================================
+describe('elementForDomPath', () => {
+  it('round-trips: whatever domPath names, the resolver finds', () => {
+    document.body.innerHTML = `
+      <div><section>
+        <p>one</p>
+        <p>two</p>
+        <span><b id="deep">deep</b></span>
+      </section></div>`;
+
+    for (const el of document.body.querySelectorAll('*')) {
+      expect(elementForDomPath(domPath(el)), domPath(el)).toBe(el);
+    }
+  });
+
+  it('tells same-tag siblings apart', () => {
+    document.body.innerHTML = '<p id="a">a</p><p id="b">b</p><p id="c">c</p>';
+    const b = document.getElementById('b');
+    expect(elementForDomPath(domPath(b)).id).toBe('b');
+  });
+
+  it('counts nth among same-tag siblings only, like :nth-of-type', () => {
+    // A <p> after an <h1> is still the *first* p. Counting all siblings
+    // would resolve to nothing — or worse, to the wrong element.
+    document.body.innerHTML = '<div><h1>t</h1><p id="p1">x</p><p id="p2">y</p></div>';
+    expect(elementForDomPath(domPath(document.getElementById('p1'))).id).toBe('p1');
+    expect(elementForDomPath(domPath(document.getElementById('p2'))).id).toBe('p2');
+  });
+
+  it('returns null when the page changed underneath the path', () => {
+    document.body.innerHTML = '<div><p id="t">x</p></div>';
+    const path = domPath(document.getElementById('t'));
+    document.body.innerHTML = '<span>replaced</span>';
+    expect(elementForDomPath(path)).toBeNull();
+  });
+
+  it('returns null rather than throwing on garbage', () => {
+    expect(elementForDomPath('')).toBeNull();
+    expect(elementForDomPath(null)).toBeNull();
+    expect(elementForDomPath('not a path at all >>> ]')).toBeNull();
+  });
+
+  it('resolves custom elements', () => {
+    document.body.innerHTML = '<my-card>a</my-card><my-card id="second">b</my-card>';
+    const el = document.getElementById('second');
+    expect(elementForDomPath(domPath(el))).toBe(el);
   });
 });

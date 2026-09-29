@@ -32,6 +32,14 @@ export function createStructureBar({ onOp }) {
 
   let target = null;
 
+  // Rearranging rewrites source, and source needs an annotation to be
+  // found. Saying so up front — buttons disabled, one line of why — beats
+  // four buttons that each refuse only after being pressed.
+  const note = document.createElement("span");
+  note.className = `${P}-struct-note`;
+  note.textContent = "Needs a build annotation";
+  note.hidden = true;
+
   for (const spec of OPS) {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -50,6 +58,7 @@ export function createStructureBar({ onOp }) {
 
     bar.appendChild(btn);
   }
+  bar.appendChild(note);
 
   function position(el) {
     const rect = el.getBoundingClientRect();
@@ -65,6 +74,13 @@ export function createStructureBar({ onOp }) {
 
     show(el) {
       target = el;
+
+      const sourced = Boolean(el.dataset.editFile);
+      for (const btn of bar.querySelectorAll(`.${P}-struct-btn`)) {
+        btn.disabled = !sourced;
+      }
+      note.hidden = sourced;
+
       bar.hidden = false;
       position(el);
     },

@@ -35,6 +35,7 @@ import { BREAKPOINTS, activeBreakpoint, windowSizeFor } from "./ui/viewport.js";
 import {
   EDITABLE_SELECTOR,
   editKey,
+  elementForDomPath,
   findEditableElements,
   editableAncestors,
   describeElement,
@@ -52,6 +53,16 @@ const CLS = {
 };
 
 const SESSION_STORAGE_KEY = "editSession";
+
+/**
+ * Responsive-image attributes parked while a replacement is previewed.
+ *
+ * Setting `src` alone is not a preview on any page using srcset — the
+ * browser keeps choosing from the candidate set and the swap looks like it
+ * did nothing. The originals are kept here, off the page's own markup, so
+ * undo can put them back exactly.
+ */
+const stashedResponsive = new WeakMap();
 
 /** chrome.storage.local has a finite quota, and a PR is not a CDN. */
 const MAX_IMAGE_BYTES = 512 * 1024;
@@ -979,7 +990,12 @@ function applyEditToDom(el, edit) {
   observer?.pause();
 
   if (edit.op) applyStructureOp(el, edit);
-  else if (edit.attribute) setAttributeValue(el, edit.attribute, edit.newText);
+  else if (edit.attribute) {
+    // Redoing an image swap has to park srcset again, or the redone
+    // preview silently loses to the candidate set — same as the first time.
+    if (edit.attribute === "src" && edit.upload) stashResponsiveAttrs(el);
+    setAttributeValue(el, edit.attribute, edit.newText);
+  }
   else if (typeof edit.run === "number") setRunText(el, edit.run, edit.newText);
   else el.innerText = edit.newText;
 
@@ -1001,13 +1017,35 @@ function setRunText(el, index, text) {
   node.textContent = `${lead}${String(text).trim()}${trail}`;
 }
 
+function stashResponsiveAttrs(el) {
+  if (stashedResponsive.has(el)) return;
+  const parked = {};
+  for (const name of ["srcset", "sizes"]) {
+    if (el.hasAttribute(name)) {
+      parked[name] = el.getAttribute(name);
+      el.removeAttribute(name);
+    }
+  }
+  if (Object.keys(parked).length) stashedResponsive.set(el, parked);
+}
+
+function restoreResponsiveAttrs(el) {
+  const parked = stashedResponsive.get(el);
+  if (!parked) return;
+  for (const [name, value] of Object.entries(parked)) el.setAttribute(name, value);
+  stashedResponsive.delete(el);
+}
+
 /** Undo an edit's effect, returning the element to how the page found it. */
 function revertEditInDom(el, edit) {
   if (!edit) return;
   observer?.pause();
 
   if (edit.op) revertStructureOp(el, edit);
-  else if (edit.attribute) setAttributeValue(el, edit.attribute, edit.originalText);
+  else if (edit.attribute) {
+    setAttributeValue(el, edit.attribute, edit.originalText);
+    if (edit.attribute === "src") restoreResponsiveAttrs(el);
+  }
   else if (typeof edit.run === "number") setRunText(el, edit.run, edit.originalRaw);
   else if (edit.originalRaw !== undefined) el.innerText = edit.originalRaw;
 
@@ -1025,7 +1063,9 @@ function setAttributeValue(el, attribute, value) {
   if (attribute === "class" || attribute === "className") {
     const ours = [...el.classList].filter((c) => c.startsWith(P));
     const theirs = String(value).split(/\s+/).filter(Boolean);
-    el.className = [...theirs, ...ours].join(" ");
+    // setAttribute, not el.className: on an SVG element className is a
+    // read-only SVGAnimatedString, and assigning it throws the edit away.
+    el.setAttribute("class", [...theirs, ...ours].join(" "));
     return;
   }
   el.setAttribute(attribute, value);
@@ -1172,6 +1212,16 @@ function elementForKey(key) {
   // anywhere — neither source held the moved element and the record was
   // cleared without the DOM being put back. Annotated elements are found by
   // their annotation instead, which exists whatever the tool is doing.
+  // A dom: key *is* a path — resolve it directly. Searching decorated
+  // elements for it has the same failure the annotated keys had: at undo
+  // time nothing is decorated, and an attribute edit on an unannotated
+  // element (which Properties now allows) was cleared without the DOM
+  // being put back.
+  if (base.startsWith("dom:")) {
+    const direct = elementForDomPath(base.slice(4));
+    if (direct) return direct;
+  }
+
   const pools = [
     editableEls,
     Array.from(document.querySelectorAll("[data-edit-file]")),
@@ -1252,7 +1302,9 @@ function pickImage(el) {
     const targetPath = uploadPathFor(originalSrc, file.name);
 
     // Show the new image straight away; the source still points at the old
-    // path until the pull request lands.
+    // path until the pull request lands. srcset would keep winning over a
+    // plain src, so it is parked (and restored on undo).
+    stashResponsiveAttrs(el);
     el.setAttribute("src", dataUrl);
 
     session.record({
@@ -1399,7 +1451,7 @@ function onKeydown(e) {
   // that shows a shortcut badge for a key that does nothing teaches people
   // to stop believing the cards.
   const toolFor = { i: TOOL.INSPECT, e: TOOL.EDIT, p: TOOL.PROPERTIES, r: TOOL.STRUCTURE, c: TOOL.COMMENT };
-  const tool = toolFor[e.key];
+  const tool = toolFor[e.key?.toLowerCase?.()];
   if (tool) rail.selectTool(activeTool === tool ? null : tool);
 }
 

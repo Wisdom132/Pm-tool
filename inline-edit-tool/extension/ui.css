@@ -1898,3 +1898,23 @@
   color: var(--iet-muted);
   font-variant-numeric: tabular-nums;
 }
+
+.__iet-struct-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.__iet-struct-note {
+  align-self: center;
+  padding: 0 8px 0 4px;
+  font: 500 11px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--iet-warn);
+  white-space: nowrap;
+}
+
+/* The toast and the tool card share the bottom-left corner. When the card
+   is up on that side, toasts step over it rather than landing on top —
+   both carry information, and neither is allowed to eat the other. */
+.__iet-toolcard[data-side='left']:not([hidden]) ~ #__iet-toast {
+  bottom: 268px;
+}

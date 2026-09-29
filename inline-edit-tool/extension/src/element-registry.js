@@ -50,6 +50,38 @@ export function domPath(el, root = null) {
 }
 
 /**
+ * Resolve a `domPath` back to the element it named.
+ *
+ * The path is built to mirror :nth-of-type, so it converts straight into a
+ * CSS selector. This is what lets an edit on an *unannotated* element be
+ * found again later — undo arrives by message, with the pointer anywhere,
+ * and nothing may depend on the element still being decorated or hovered.
+ *
+ * @returns {Element|null} null when the page has changed underneath the
+ *          path; the caller treats that as "nothing to restore", which is
+ *          honest — the node the edit touched is gone.
+ */
+export function elementForDomPath(path, doc = document) {
+  if (!path) return null;
+
+  const selector = path
+    .split(">")
+    .map((part) => {
+      const [tag, nth] = part.split(":");
+      return `${tag}:nth-of-type(${Number(nth) || 1})`;
+    })
+    .join(" > ");
+
+  try {
+    return doc.querySelector(`body > ${selector}`);
+  } catch {
+    // A tag name the page invented that CSS cannot parse. No element is
+    // better than a thrown selector error mid-undo.
+    return null;
+  }
+}
+
+/**
  * A stable identity for an element.
  *
  * The annotation plugin already emits a unique coordinate per element, which

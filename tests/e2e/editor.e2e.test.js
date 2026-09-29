@@ -532,6 +532,111 @@ describe('properties on anything', () => {
   });
 });
 
+describe('edits on unannotated elements', () => {
+  // section.banner carries no data-edit-file. Properties opens on it all the
+  // same — and everything recorded against it uses a dom: key, which is the
+  // path undo has to resolve with nothing decorated and the pointer
+  // anywhere.
+  const BANNER = 'section.banner';
+
+  // The class editor, not an attribute row: the panel only offers
+  // attributes already written in the source — the codemod rewrites values,
+  // it does not invent attributes — and section.banner carries none. Its
+  // classes are the one thing always editable.
+  const addClass = (name) =>
+    page.evaluate((n) => {
+      const input = __IET_TEST__.root.querySelector('.__iet-chip-input');
+      input.value = n;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    }, name);
+
+  beforeEach(async () => {
+    await page.evaluate(() =>
+      chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'properties' })
+    );
+    await page.waitForTimeout(150);
+    // el.click() rather than a pointer position: the section's children
+    // cover most of its pixels, and where exactly its own padding falls is
+    // the page's business, not this test's. The dispatched click bubbles
+    // through the same document-level handler a real one would.
+    await page.evaluate(() => document.querySelector('section.banner').click());
+    await page.waitForTimeout(200);
+  });
+
+  it('opens the panel for the section itself', async () => {
+    const title = await page.evaluate(
+      () => __IET_TEST__.root.querySelector('.__iet-properties-title')?.textContent
+    );
+    expect(title).toContain('section');
+  });
+
+  it('records the edit under a dom: key', async () => {
+    await addClass('ring-2');
+    await page.waitForTimeout(200);
+
+    const edits = await page.evaluate(async () => {
+      const stored = await chrome.storage.local.get(['editSession']);
+      return stored.editSession?.edits ?? [];
+    });
+    expect(edits).toHaveLength(1);
+    expect(edits[0].key.startsWith('dom:')).toBe(true);
+    expect(await page.getAttribute(BANNER, 'class')).toContain('ring-2');
+  });
+
+  it('undo restores the element, not just the record', async () => {
+    // The regression this pins: undo resolved its target by searching
+    // decorated elements, whole-page tools decorate only what is hovered,
+    // and the record was cleared while the DOM kept the edit.
+    await addClass('ring-2');
+    await page.waitForTimeout(200);
+
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'UNDO' }));
+    await page.waitForTimeout(250);
+
+    expect(await page.getAttribute(BANNER, 'class')).not.toContain('ring-2');
+    expect(await page.getAttribute(BANNER, 'class')).toContain('banner');
+    expect((await state()).count).toBe(0);
+  });
+});
+
+describe('structure on unannotated elements', () => {
+  it('opens with every operation disabled, and says why', async () => {
+    // Before: the bar opened and four buttons each refused only after being
+    // pressed.
+    await page.evaluate(() =>
+      chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'structure' })
+    );
+    await page.waitForTimeout(150);
+    await page.evaluate(() => document.querySelector('section.banner').click());
+    await page.waitForTimeout(200);
+
+    const bar = await page.evaluate(() => {
+      const root = __IET_TEST__.root;
+      return {
+        open: !root.querySelector('#__iet-structure').hidden,
+        disabled: [...root.querySelectorAll('.__iet-struct-btn')].map((b) => b.disabled),
+        note: root.querySelector('.__iet-struct-note')?.hidden,
+      };
+    });
+    expect(bar.open).toBe(true);
+    expect(bar.disabled.every(Boolean)).toBe(true);
+    expect(bar.note).toBe(false);
+  });
+
+  it('still fully works on an annotated element afterwards', async () => {
+    await page.evaluate(() =>
+      chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'structure' })
+    );
+    await page.click('h3[data-edit-line="8"]');
+    await page.waitForTimeout(200);
+
+    const disabled = await page.evaluate(() =>
+      [...__IET_TEST__.root.querySelectorAll('.__iet-struct-btn')].map((b) => b.disabled)
+    );
+    expect(disabled.every((d) => !d)).toBe(true);
+  });
+});
+
 describe('measurements', () => {
   it('pins with a click, then reads the distance to whatever is hovered', async () => {
     await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'inspect' }));

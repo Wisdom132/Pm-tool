@@ -722,6 +722,38 @@ not do. Rewritten to assert what must actually be true — the first hover
 paints immediately, and Edit still pre-decorates. Both suites are fully
 green for the first time: 994 unit, 131 e2e.
 
+### Second review of the tools — four more, all fixed
+
+Requested after the first round shipped, and it found the same class of
+bug behind a second door:
+
+- **Undo on an *unannotated* element did not restore the DOM.** The first
+  fix resolved annotated elements by their annotation; an attribute edit
+  on an unannotated element — which Properties now permits — still
+  resolved through decoration. A `dom:` key *is* a path, so it now
+  resolves directly (`elementForDomPath`, mirroring `:nth-of-type`), and
+  an e2e pins the round trip: class edit on `section.banner`, undo, class
+  restored.
+- **Replacing an image only pretended to preview on srcset pages.**
+  Setting `src` loses to the candidate set on any page using responsive
+  images — which is every Next.js page. `srcset`/`sizes` are parked in a
+  WeakMap during the preview and restored on undo; redo parks them again.
+- **Class edits on SVG elements were silently discarded** —
+  `el.className` on SVG is a read-only `SVGAnimatedString`. Written via
+  `setAttribute` now, which both element kinds accept.
+- **The structure bar opened on unannotated elements with four buttons
+  that each refused only after being pressed.** It now opens with the
+  operations disabled and one line of why ("Needs a build annotation").
+
+Smaller: tool keys survive caps lock (`e.key` lowered); toasts step over
+the gesture card instead of landing on it — both live bottom-left.
+
+Checked and found sound rather than changed: an edit with no source file
+goes to Locate or an issue, never a guessed commit; the properties panel
+only offers attributes already present in source, which is the codemod's
+actual contract; a disabled struct button cannot fire even
+programmatically.
+
 ### Still open on the tool
 
 - [ ] Structure ops still require a build annotation (`recordStructuralEdit`
