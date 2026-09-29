@@ -156,4 +156,38 @@ export class SitesService {
       organisationId: match.organisationId,
     };
   }
+
+  /**
+   * Resolve a hostname for the *public* feedback widget.
+   *
+   * No session, so none of the team-reachability checks above apply. Two
+   * gates stand in their place, and both must pass:
+   *
+   * - **The widget is switched on.** Off by default. Registering a site
+   *   should not quietly open an endpoint that accepts screenshots from
+   *   anyone who can load the page.
+   * - **The domain is verified.** This is the check `verificationToken` was
+   *   always for. Without it, anyone can register `acme.com`, turn the
+   *   widget on, and collect feedback meant for its owner — which is
+   *   exactly what the schema comment warned about.
+   *
+   * @returns null for every failure, without saying which. An anonymous
+   *          caller learning that a hostname is registered but unverified
+   *          is a free reconnaissance answer.
+   */
+  async resolvePublic(hostname: string) {
+    const candidates = await this.sites.findPublicCandidates(hostname.toLowerCase());
+    const match = bestMatch(candidates, hostname.toLowerCase());
+
+    if (!match) return null;
+    if (!match.site.feedbackWidget) return null;
+    if (!match.site.verifiedAt) return null;
+
+    return {
+      siteId: match.siteId,
+      environmentId: match.id,
+      organisationId: match.organisationId,
+      hostname: match.hostname,
+    };
+  }
 }

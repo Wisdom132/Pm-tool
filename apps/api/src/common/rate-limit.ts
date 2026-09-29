@@ -29,6 +29,30 @@ export const LIMITS = {
   read: { limit: 300, windowSeconds: 60 * 60 },
   /** Code search is metered separately by GitHub and much stricter. */
   search: { limit: 60, windowSeconds: 60 * 60 },
+
+  /**
+   * Public feedback, per visitor address.
+   *
+   * The only endpoint here that an unauthenticated stranger can reach, so
+   * it is the only one where the limit is the whole defence rather than a
+   * backstop.
+   *
+   * Twenty an hour is generous for a person and useless for a script. It is
+   * not lower because addresses are shared: an office behind one NAT, or a
+   * mobile network, is many real visitors wearing one address, and a limit
+   * of two would silently swallow the second person's comment.
+   */
+  feedbackIp: { limit: 20, windowSeconds: 60 * 60 },
+
+  /**
+   * Public feedback, per site.
+   *
+   * The per-address limit does nothing against a flood from many addresses,
+   * which is what a botnet is. This one bounds the damage to the inbox no
+   * matter how the traffic is spread — the owner finds a full inbox rather
+   * than an unusable one, and the site's own off switch is one flag away.
+   */
+  feedbackSite: { limit: 500, windowSeconds: 60 * 60 },
 } as const satisfies Record<string, Limit>;
 
 export interface Verdict {

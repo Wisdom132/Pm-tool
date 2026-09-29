@@ -56,6 +56,7 @@ model User {
   auditEvents        AuditEvent[]
   authoredFeedback   Feedback[]    @relation("FeedbackAuthor")
   resolvedFeedback   Feedback[]    @relation("FeedbackResolver")
+  assignedFeedback   Feedback[]    @relation("FeedbackAssignee")
 
   @@map("app_user")
 }
@@ -159,6 +160,17 @@ model Site {
   /// could claim a hostname and collect feedback meant for its owner.
   verifiedAt        DateTime? @map("verified_at")
   verificationToken String    @map("verification_token")
+
+  /// The public feedback widget, off until someone turns it on.
+  ///
+  /// Off by default because switching it on opens an endpoint that accepts
+  /// screenshots from anyone who can load the page. That should be a
+  /// decision somebody makes, not a thing that happens to be true because
+  /// the site was registered.
+  ///
+  /// This is also the off switch: one flag, effective immediately, no
+  /// deploy needed on the customer's side to stop a flood.
+  feedbackWidget Boolean @default(false) @map("feedback_widget")
 
   createdAt DateTime  @default(now()) @map("created_at")
   deletedAt DateTime? @map("deleted_at")
@@ -331,6 +343,18 @@ enum FeedbackStatus {
   resolved
 }
 
+/// How a comment arrived, which decides how far it is trusted.
+///
+/// `extension` came from a signed-in editor whose session proves both who
+/// they are and which sites they may reach. `widget` came from an
+/// unauthenticated visitor on a public page: the author is self-declared,
+/// the rate limits are per-IP rather than per-user, and the site must have
+/// switched the widget on and verified its domain.
+enum FeedbackSource {
+  extension
+  widget
+}
+
 /// A comment left on a page by someone who will never open the repository.
 ///
 /// Distinct from an issue or a pull request: the author may not have an
@@ -363,10 +387,43 @@ model Feedback {
   authorUserId String? @map("author_user_id") @db.Uuid
 
   /// Context nobody types. P3.3.
+  ///
+  /// `userAgent` is read from the request header, never from the body: a
+  /// client that declares its own browser can declare any browser, and the
+  /// value exists to answer "what was it broken in".
   viewport  String?
   userAgent String? @map("user_agent")
 
+  /// The screenshot, inline.
+  ///
+  /// Deliberately a column rather than object storage: there is no bucket
+  /// in this system yet, and adding one to ship a screenshot is a large
+  /// dependency for a small feature. It is capped hard at
+  /// `MAX_SCREENSHOT_BYTES` and downscaled client-side before upload, so
+  /// the growth is bounded and predictable.
+  ///
+  /// This is the one field that will make this table big. Moving it to a
+  /// bucket later changes this column to a key and `readScreenshot` to a
+  /// fetch; nothing else needs to know.
+  screenshot     Bytes?
+  screenshotType String? @map("screenshot_type")
+
+  source FeedbackSource @default(extension)
+
+  /// A salted hash, never the address itself.
+  ///
+  /// It exists to answer "is this all one flood" and to block an abusive
+  /// source, which a hash does as well as the address does. Storing the
+  /// address itself would mean holding personal data about visitors who
+  /// never signed up for anything.
+  authorIpHash String? @map("author_ip_hash")
+
   status       FeedbackStatus @default(new)
+  /// Who is dealing with it. Triage answers "is this real"; this answers
+  /// "whose is it" — without it a shared inbox has no way to stop two
+  /// people picking up the same comment.
+  assignedToId String?        @map("assigned_to_id") @db.Uuid
+  assignedAt   DateTime?      @map("assigned_at")
   resolvedById String?        @map("resolved_by_id") @db.Uuid
   resolvedAt   DateTime?      @map("resolved_at")
   /// Set once promoted into an issue or change request.
@@ -379,8 +436,13 @@ model Feedback {
   environment  SiteEnvironment? @relation(fields: [environmentId], references: [id], onDelete: SetNull)
   authorUser   User?            @relation("FeedbackAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
   resolvedBy   User?            @relation("FeedbackResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  /// SetNull, not Cascade: removing someone from the organisation must not
+  /// delete the feedback they happened to be holding.
+  assignedTo   User?            @relation("FeedbackAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   @@index([organisationId, status, createdAt(sort: Desc)])
   @@index([siteId])
+  /// "What is on my plate" is the second query this inbox has to answer.
+  @@index([organisationId, assignedToId, createdAt(sort: Desc)])
   @@map("feedback")
 }

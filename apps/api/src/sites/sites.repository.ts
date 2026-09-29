@@ -96,6 +96,42 @@ export class SitesRepository {
     });
   }
 
+  /**
+   * Environments matching a hostname, with no user in the picture.
+   *
+   * For the public widget only, where there is no session to scope the
+   * search to. It is deliberately narrow: an exact hostname hit, plus the
+   * wildcard patterns, rather than every environment in the system — the
+   * caller is anonymous and this must not become a way to enumerate which
+   * hostnames are registered.
+   *
+   * Soft-deleted sites are excluded here rather than by the caller, so a
+   * deleted site stops collecting the moment it is deleted.
+   */
+  async findPublicCandidates(hostname: string) {
+    const select = {
+      id: true,
+      siteId: true,
+      organisationId: true,
+      hostname: true,
+      label: true,
+      site: { select: { id: true, name: true, feedbackWidget: true, verifiedAt: true } },
+    } as const;
+
+    const exact = await this.prisma.siteEnvironment.findMany({
+      where: { hostname, site: { deletedAt: null } },
+      select,
+    });
+    if (exact.length) return exact;
+
+    // Wildcards cannot be matched in SQL against the registry's one-label
+    // rule, so they are filtered in `bestMatch`. There are few of them.
+    return this.prisma.siteEnvironment.findMany({
+      where: { hostname: { startsWith: '*.' }, site: { deletedAt: null } },
+      select,
+    });
+  }
+
   /** Whether any team this user belongs to grants access to a site. */
   async userReachesSiteViaTeam(userId: string, siteId: string): Promise<boolean> {
     const grant = await this.prisma.teamSite.findFirst({
