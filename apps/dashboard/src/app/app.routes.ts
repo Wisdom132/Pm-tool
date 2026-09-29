@@ -1,11 +1,13 @@
 import { Routes } from '@angular/router';
 import { DashboardLayout } from './layouts/dashboard-layout/dashboard-layout';
 import { AuthLayout } from './layouts/auth-layout/auth-layout';
+import { requireAdmin, requireNoSession, requireSession } from './core/auth.guard';
 
 export const routes: Routes = [
   {
     path: '',
     component: AuthLayout,
+    canActivate: [requireNoSession],
     children: [
       { path: 'sign-in', loadComponent: () => import('./features/auth/sign-in').then((m) => m.SignIn) },
       { path: 'sign-in/check-email', loadComponent: () => import('./features/auth/check-email').then((m) => m.CheckEmail) },
@@ -15,6 +17,7 @@ export const routes: Routes = [
   {
     path: '',
     component: DashboardLayout,
+    canActivate: [requireSession],
     children: [
       { path: '', redirectTo: 'overview', pathMatch: 'full' },
       { path: 'overview', loadComponent: () => import('./features/overview/overview').then((m) => m.Overview) },
@@ -32,9 +35,9 @@ export const routes: Routes = [
       { path: 'teams', loadComponent: () => import('./features/teams/teams').then((m) => m.Teams) },
       { path: 'teams/:id', loadComponent: () => import('./features/teams/team-detail').then((m) => m.TeamDetail) },
 
-      { path: 'audit', loadComponent: () => import('./features/audit/audit').then((m) => m.Audit) },
+      { path: 'audit', canActivate: [requireAdmin], loadComponent: () => import('./features/audit/audit').then((m) => m.Audit) },
 
-      { path: 'settings', loadComponent: () => import('./features/settings/organisation-settings').then((m) => m.OrganisationSettings) },
+      { path: 'settings', canActivate: [requireAdmin], loadComponent: () => import('./features/settings/organisation-settings').then((m) => m.OrganisationSettings) },
       { path: 'account', loadComponent: () => import('./features/settings/account-settings').then((m) => m.AccountSettings) },
 
       // Inside the shell, so a wrong URL keeps its navigation rather than

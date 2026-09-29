@@ -238,122 +238,107 @@ the `local/project` fallback and a source panel that gives up.
 Both ends are built and neither is connected. This is now the critical path:
 until it is done, nothing works end to end for a user.
 
-- [ ] **The extension still speaks the old protocol.** It posts to
-      `/api/create-pr` with `repo` and `branch` in the body, and
-      authenticates via `/api/auth/extension` — all three are gone. It needs
-      to call `GET /api/resolve?hostname=` once, then send `environmentId` to
-      `/api/editing/*`. `inline-edit-tool/extension/src/background.js` is
-      where the URLs live.
-- [ ] **The dashboard is 100% mock data.** Seventeen feature files import
-      `core/mock-data.ts` and **zero** use `HttpClient`. Sites and
-      connections already have real endpoints to call; the rest do not (see
-      below). Writes silently do nothing: registering a site adds no row,
-      Save on site detail discards, feedback status never changes.
+- [x] **The extension still speaks the old protocol.** Done. It now resolves
+      the hostname once per page (`src/site-resolver.js`) and sends an
+      `environmentId` to `/api/editing/*`.
+      *The repo and branch pickers in the submit panel are gone, along with
+      `loadRepos`, `loadBranches`, `saveSiteSettings` and manual mode — the
+      choice they offered is no longer the client's to make, and offering
+      one would produce a 404. An unregistered hostname now says so and
+      points at the dashboard.*
 
-### APIs the dashboard needs and does not have
+      **Authentication changed shape.** There is no OAuth launch: the
+      extension has no inbox for a magic link, so `POST
+      /auth/extension-tokens` mints a long-lived session in the dashboard
+      (Your account → Browser extension) and it is pasted into the popup.
+      The background worker verifies it against `/auth/me` before storing,
+      because a wrong token in `chrome.storage` fails later on a customer's
+      page where the cause is invisible. Tokens are listed with a label and
+      last-used time, and revocable one at a time.
 
-`auth`, `sites`, `connections` and `editing` exist — 20 endpoints. These do
-not:
+      Two consequences worth naming:
+      - **`chrome.identity` is no longer requested.** It existed only for
+        the OAuth flow. One fewer permission on the install prompt.
+      - **No provider credential can reach the browser at all** — not just
+        by policy, but because nothing in the extension ever talks to
+        GitHub.
 
-- [ ] **Teams** — create, rename, add/remove member, grant/revoke site
-      access. The schema and the `Everyone` default team exist and
-      `authoriseEnvironment` already enforces team access, so the model is
-      proven; only the endpoints are missing.
-- [ ] **People** — list members, change a role, remove someone.
-- [ ] **Invitations** — create, list, revoke, accept. Blocks P0.2.
-- [ ] **Audit** — `GET /audit`, paginated. Blocks P0.4.
-- [ ] **Organisation settings** — rename, and the deletion obligation this
-      file opens by naming.
-- [ ] **Feedback** — the whole of P3 below.
+      Verified by `apps/api/test/extension-flow.sh` — 13 checks walking the
+      path the extension now walks, including that a client-supplied `repo`
+      is refused outright and that revoking an extension token does not
+      touch the dashboard session.
+- [x] **The dashboard is 100% mock data.** Done: `core/mock-data.ts` is
+      deleted, all seventeen feature files call the API, and every write
+      persists. `core/api.client.ts` owns `withCredentials`, the
+      `x-organisation-id` header and error-shape flattening;
+      `core/api.ts` is one thin service per resource; `core/session.ts`
+      holds the signed-in user and the current organisation; route guards
+      keep an editor out of admin-only screens the API would 403 anyway.
+      `createLoader` now takes an Observable, which is the only change its
+      callers needed.
+      *Verified by `apps/api/test/dashboard-contract.sh` — 18 checks that
+      every endpoint returns the fields the dashboard's types promise,
+      including three asserting that `lastEditedAt`, `verified` and a flat
+      `provider` are **absent**. Those were mock inventions the dashboard
+      referenced for weeks; nothing could catch it until the two were
+      compared.*
 
-## P3 — Feedback collector
+      Three things the mock implied that the API does not do, corrected in
+      place rather than faked:
+      - **The reply thread on feedback detail is gone.** There is no
+        comments model, so a composer would have accepted what someone
+        typed and dropped it. Triage — status, and recording the issue it
+        became — is what the API supports.
+      - **The device-by-device session list is gone.** The API can revoke
+        every other session or the current one, not name them, so the
+        screen offers the blunt control it actually has.
+      - **"The default team always covers every site" was false.** It is an
+        ordinary team that each new site is granted to. The copy now says
+        that.
 
-Distinct from opening an issue or a pull request: a way for people who will
-never touch the repository to leave a comment pinned to a part of the page.
+      Also added `PATCH /auth/me`, so a display name can be set — which is
+      what the pull-request attribution falls back from, and the difference
+      between crediting "ada" and publishing "ada@acme.com".
 
-- [ ] **P3.1** A widget the site embeds, or the extension provides. Both,
-      eventually — the embed is what lets a client comment without installing
-      anything.
-- [ ] **P3.2** Feedback is pinned to an **element**, and where the page is
-      annotated, to a **source file and line**. That link is the thing no
-      general feedback tool has, and it is already built.
-- [ ] **P3.3** Screenshot, viewport, browser and the page URL attached
-      automatically. Most of a bug report is context nobody types.
-- [ ] **P3.4** Inbox in the dashboard: triage, assign, resolve, and promote a
-      comment into an issue or a pull request — which is where this rejoins
-      the existing tool.
-- [ ] **P3.5** **Abuse surface.** A public endpoint that accepts screenshots
-      from unauthenticated visitors needs rate limiting, size caps, spam
-      handling and a way to turn it off. Worth designing before shipping, not
-      after the first flood.
+### APIs the dashboard needs — done
 
-## P4 — Reporting integrations
+`auth`, `sites`, `connections` and `editing` were already there. These
+landed with it: **46 routes** in total, up from 20.
 
-Incremental once P0 and P1 exist. Each one is ongoing maintenance, so add them
-on demand rather than speculatively.
+- [x] **Teams** — list, get, create, rename, delete, and `PUT` the whole
+      member set or site set. The default team is protected from deletion:
+      every new site is granted to it and every invitee joins it, so
+      deleting it would silently make new sites admin-only.
+- [x] **People** — one list merging accepted members and pending
+      invitations, since "who is in this organisation" is one question.
+      Change a role, remove someone.
+- [x] **Invitations** — create (superseding any earlier one for the same
+      address), revoke, and accept.
+- [x] **Audit** — `GET /audit`, keyset-paginated on the autoincrement id.
+      Admin only. `GET /audit/actions` for the filter. `pr.opened` and
+      `issue.opened` are now recorded too — they were the gap.
+- [x] **Organisation settings** — get, rename, and soft delete behind a
+      typed confirmation. Delete is refused while provider connections are
+      live, because uninstalling from GitHub is the part a soft delete
+      cannot undo.
+- [x] **Feedback inbox** — list with status counts, get, set status,
+      promote, delete. New `Feedback` model and migration.
+      *Not* the public collector: P3.1/P3.5 need rate limiting, size caps
+      and spam handling first, and shipping ingest without them is how the
+      first flood happens.
 
-- [ ] **P4.1** Integration framework: connection, credential storage, field
-      mapping, retry, and a visible failure state. The framework matters more
-      than the first integration.
-- [ ] **P4.2** Jira — create an issue from feedback or an edit.
-- [ ] **P4.3** Linear, Slack, Airtable.
-- [ ] **P4.4** Outbound webhooks, which cover everything not on this list and
-      cost far less than a bespoke integration.
+Verified by `apps/api/test/members-teams.sh` — 35 checks, including the one
+that matters most: **an organisation cannot be left with no admin**, probed
+from every route that could reach it.
 
-## P5 — Product analytics
+**A real bug this surfaced.** An invited person signed in and got a `User`
+row with *no membership at all* — `findOrCreateUser` checked
+`hasPendingInvitation` and then did nothing with it, so they landed on a
+dashboard that could show them nothing. `acceptPendingInvitations` now runs
+on every sign-in, not just the first, so an existing user invited to a
+second organisation joins it too.
 
-**This is the one to scope down.** Recorded here honestly rather than as a
-checklist item, because "implement what Hotjar does" is not a feature — it is
-a company, with its own hard problems: ingestion at volume, storage cost, PII
-in replays, consent management, and a performance budget on someone else's
-production site.
+**And two more.** Soft-deleting an organisation left it fully usable, because
+`OrgGuard` never checked `deletedAt`; and `/auth/me` would have kept offering
+it in the switcher. Both now filter on it in the query.
 
-It also changes the product's posture. Everything above runs on a preview
-deploy or behind an extension. Analytics means our script on the customer's
-**production** pages, in front of their real users, which is a different
-compliance and reliability surface entirely.
-
-There is a genuinely differentiated version, and it is narrower:
-
-> Because we already map a rendered element to the source file and line that
-> produced it, we can report engagement **per component** rather than per
-> pixel. "This call-to-action is rendered in `Hero.vue:14` and nobody clicks
-> it" is something a heatmap tool structurally cannot say, and it is the same
-> click that opens the editor to fix it.
-
-- [ ] **P5.1** Its own folder and its own service. No shared datastore with
-      the editor — the access patterns and retention rules have nothing in
-      common.
-- [ ] **P5.2** Component-level click and visibility counts, keyed to source
-      location. Start here; it is the differentiator and the cheapest to run.
-- [ ] **P5.3** Consent, PII masking, and a documented retention window —
-      **before** any recording feature, not alongside it.
-- [ ] **P5.4** Heatmaps.
-- [ ] **P5.5** Session replay. Last, and only if customers ask for it after
-      P5.2. It is the most expensive thing on this page to build and to run.
-
----
-
-## Sequencing
-
-1. **P0 + P2 first.** They unblock everything and fix the failure already hit
-   in practice: an organisation that could not use the tool because a GitHub
-   App was not installed, and pages the extension could not identify.
-2. **P3 next.** Small, self-contained, and the clearest new value for the
-   non-technical users this is aimed at.
-3. **P1.4–P1.6 on demand.** Build the interface early; add providers when a
-   customer needs one.
-4. **P4 as asked for.**
-5. **P5.2 as an experiment.** Everything after it only if that lands.
-
-## Open questions
-
-- Who is the buyer — the engineering team that owns the repository, or the
-  marketing team that owns the copy? The dashboard's shape depends on it.
-- Does the extension survive, or does the dashboard become the way in? An
-  embed with no install is a much shorter path for a non-technical editor.
-- Self-serve or sales-led? It decides whether P0.2 needs invitations and
-  billing on day one.
-- What happens on a page with no build annotation at all? Locate already
-  covers it, but it is slower and asks for a confirmation — and that will be
-  the common case on sites that have not added the plugin yet.

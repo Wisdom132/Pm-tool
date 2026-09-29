@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { Router, RouterOutlet } from '@angular/router';
 import { Theme } from '../../core/theme';
 import { AppShell, DEFAULT_NAV } from '../../../design-system';
-import { MOCK_ORGANISATIONS, MOCK_SESSION } from '../../core/mock-data';
+import { Session } from '../../core/session';
 
 /**
  * The signed-in frame. Everything behind auth renders inside this.
@@ -23,7 +23,7 @@ import { MOCK_ORGANISATIONS, MOCK_SESSION } from '../../core/mock-data';
       [organisationMeta]="organisationMeta()"
       [showOrganisation]="!!organisation()"
       [organisationId]="organisationId()"
-      [organisations]="organisations"
+      [organisations]="organisations()"
       (switchOrganisation)="onSwitchOrganisation($event)"
       [user]="user()"
       [role]="role()"
@@ -44,13 +44,24 @@ export class DashboardLayout {
   /** Owned by the service so the class on <html> and the toggle agree. */
   protected readonly dark = inject(Theme).dark;
 
-  // Mock session until the API exists.
-  protected readonly organisations = MOCK_ORGANISATIONS;
-  protected readonly organisationId = signal(MOCK_SESSION.organisationId);
-  protected readonly organisation = signal(MOCK_SESSION.organisation);
-  protected readonly organisationMeta = signal(MOCK_SESSION.organisationMeta);
-  protected readonly user = signal(MOCK_SESSION.user);
-  protected readonly role = signal(MOCK_SESSION.role);
+  private readonly session = inject(Session);
+
+  protected readonly organisations = computed(() => this.session.organisations());
+  protected readonly organisationId = computed(() => this.session.organisationId() ?? '');
+  protected readonly organisation = computed(() => this.session.organisation()?.name ?? '');
+  protected readonly organisationMeta = computed(() => this.session.organisation()?.meta ?? '');
+  /**
+   * Their name if they set one, otherwise the address they signed in with —
+   * which is the only thing we know about a magic-link account.
+   */
+  protected readonly user = computed(() => {
+    const user = this.session.user();
+    return user?.name?.trim() || user?.email || '';
+  });
+  protected readonly role = computed(() => {
+    const role = this.session.organisation()?.role;
+    return role ? role[0].toUpperCase() + role.slice(1) : '';
+  });
 
   protected readonly active = signal('overview');
   protected readonly crumb = computed(
@@ -75,17 +86,12 @@ export class DashboardLayout {
   }
 
   protected onSwitchOrganisation(id: string) {
-    const org = this.organisations.find((o) => o.id === id);
-    if (!org) return;
-    this.organisationId.set(org.id);
-    this.organisation.set(org.name);
-    this.organisationMeta.set(org.meta);
-    // Everything on screen belongs to the old organisation, so go somewhere
-    // that is true for the new one rather than leaving stale rows behind.
-    this.router.navigate(['/overview']);
+    // The session owns this: it sets the header every request uses, and
+    // navigates, because everything on screen belongs to the old tenant.
+    this.session.switchTo(id);
   }
 
   protected onLogout() {
-    this.router.navigate(['/sign-in']);
+    void this.session.signOut();
   }
 }

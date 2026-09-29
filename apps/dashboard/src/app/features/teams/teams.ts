@@ -1,12 +1,16 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Button } from 'primeng/button';
 import { Tag } from 'primeng/tag';
 import { AvatarGroup } from 'primeng/avatargroup';
 import { Avatar } from 'primeng/avatar';
-import { PageHeader, EmptyState } from '../../../design-system';
+import { Skeleton } from 'primeng/skeleton';
+import { PageHeader, EmptyState, ErrorState } from '../../../design-system';
 import { CreateTeamDialog } from './create-team-dialog';
-import { MOCK_TEAMS, MOCK_MEMBERS, MOCK_SITES, Team } from '../../core/mock-data';
+import { TeamsApi } from '../../core/api';
+import { createLoader } from '../../core/load-state';
+import { Session } from '../../core/session';
+import type { Team } from '../../core/api.types';
 
 /**
  * Teams — which sites a group of people may edit.
@@ -17,14 +21,32 @@ import { MOCK_TEAMS, MOCK_MEMBERS, MOCK_SITES, Team } from '../../core/mock-data
  */
 @Component({
   selector: 'app-teams',
-  imports: [RouterLink, Button, Tag, Avatar, AvatarGroup, PageHeader, EmptyState, CreateTeamDialog],
+  imports: [RouterLink, Button, Tag, Avatar, AvatarGroup, Skeleton, PageHeader, EmptyState, ErrorState, CreateTeamDialog],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <ds-page-header title="Teams" subtitle="Which sites each group of people can edit">
-      <p-button label="New team" icon="pi pi-plus" size="small" dsActions (onClick)="creating.set(true)" />
+      @if (isAdmin()) {
+        <p-button label="New team" icon="pi pi-plus" size="small" dsActions (onClick)="creating.set(true)" />
+      }
     </ds-page-header>
 
-    @if (!teams().length) {
+    @if (loader.state() === 'error') {
+      <div class="ds-surface">
+        <ds-error-state
+          title="Could not load your teams"
+          [detail]="loader.error() ?? 'The request for this list failed.'"
+          (retry)="reload()" />
+      </div>
+    } @else if (loader.state() === 'loading') {
+      <div class="grid">
+        @for (n of [1, 2, 3]; track n) {
+          <div class="ds-surface card">
+            <p-skeleton width="45%" height="1.2rem" />
+            <p-skeleton width="70%" height="0.8rem" />
+          </div>
+        }
+      </div>
+    } @else if (!teams().length) {
       <div class="ds-surface">
         <ds-empty-state
           icon="pi pi-sitemap"
@@ -46,26 +68,26 @@ import { MOCK_TEAMS, MOCK_MEMBERS, MOCK_SITES, Team } from '../../core/mock-data
 
           <div class="people">
             <p-avatargroup>
-              @for (m of membersOf(t).slice(0, 4); track m.id) {
-                <p-avatar [label]="initial(m.name || m.email)" shape="circle" size="normal" />
+              @for (m of t.members.slice(0, 4); track m.user.id) {
+                <p-avatar [label]="initial(m.user.name || m.user.email)" shape="circle" size="normal" />
               }
-              @if (membersOf(t).length > 4) {
-                <p-avatar [label]="'+' + (membersOf(t).length - 4)" shape="circle" size="normal" />
+              @if (t.members.length > 4) {
+                <p-avatar [label]="'+' + (t.members.length - 4)" shape="circle" size="normal" />
               }
             </p-avatargroup>
             <span class="muted">
-              {{ t.memberIds.length }} {{ t.memberIds.length === 1 ? 'person' : 'people' }}
+              {{ t.members.length }} {{ t.members.length === 1 ? 'person' : 'people' }}
             </span>
           </div>
 
           <div class="sites">
-            @for (s of sitesOf(t).slice(0, 3); track s.id) {
-              <code>{{ s.hostname }}</code>
+            @for (h of hostnamesOf(t).slice(0, 3); track h) {
+              <code>{{ h }}</code>
             }
-            @if (sitesOf(t).length > 3) {
-              <span class="muted">+{{ sitesOf(t).length - 3 }} more</span>
+            @if (hostnamesOf(t).length > 3) {
+              <span class="muted">+{{ hostnamesOf(t).length - 3 }} more</span>
             }
-            @if (!sitesOf(t).length) {
+            @if (!hostnamesOf(t).length) {
               <span class="muted warn">No sites — this team cannot edit anything yet</span>
             }
           </div>
@@ -80,7 +102,7 @@ import { MOCK_TEAMS, MOCK_MEMBERS, MOCK_SITES, Team } from '../../core/mock-data
       read it as a broken invitation rather than as missing access.
     </p>
 
-    <app-create-team-dialog [(visible)]="creating" (created)="onCreated($event)" />
+    <app-create-team-dialog [(visible)]="creating" (created)="onCreated()" />
   `,
   styles: `
     :host { display: grid; gap: var(--ds-s-5); }
@@ -98,22 +120,37 @@ import { MOCK_TEAMS, MOCK_MEMBERS, MOCK_SITES, Team } from '../../core/mock-data
   `,
 })
 export class Teams {
-  protected readonly creating = signal(false);
-  protected readonly teams = signal<Team[]>(MOCK_TEAMS);
+  private readonly api = inject(TeamsApi);
+  private readonly session = inject(Session);
 
-  protected membersOf(t: Team) {
-    return MOCK_MEMBERS.filter((m) => t.memberIds.includes(m.id));
+  protected readonly creating = signal(false);
+  protected readonly loader = createLoader<Team[]>([]);
+  protected readonly teams = this.loader.data;
+  protected readonly isAdmin = this.session.isAdmin;
+
+  constructor() {
+    this.reload();
   }
 
-  protected sitesOf(t: Team) {
-    return MOCK_SITES.filter((s) => t.siteIds.includes(s.id));
+  protected reload() {
+    this.loader.load(this.api.list());
+  }
+
+  /**
+   * A team grants access to a *site*, which may have several hostnames, so
+   * the card shows hostnames rather than site names — that is what an editor
+   * recognises.
+   */
+  protected hostnamesOf(team: Team) {
+    return team.sites.flatMap((s) => s.site.environments.map((e) => e.hostname));
   }
 
   protected initial(s: string) {
     return s.charAt(0).toUpperCase();
   }
 
-  protected onCreated(team: Team) {
-    this.teams.update((list) => [...list, team]);
+  /** Re-fetch rather than append: the server assigns the id and defaults. */
+  protected onCreated() {
+    this.reload();
   }
 }

@@ -15,15 +15,23 @@ import { PrismaService } from '../prisma/prisma.service';
 export class MembershipsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * A membership in a *live* organisation.
+   *
+   * `deletedAt` is part of the filter, not a separate check. This is the
+   * query `OrgGuard` runs on every tenant-scoped request, so if it ignored
+   * the flag a soft-deleted organisation would keep working completely —
+   * which would make the delete button a lie.
+   */
   find(organisationId: string, userId: string): Promise<Memberships | null> {
-    return this.prisma.memberships.findUnique({
-      where: { organisationId_userId: { organisationId, userId } },
+    return this.prisma.memberships.findFirst({
+      where: { organisationId, userId, organisation: { deletedAt: null } },
     });
   }
 
   listForUser(userId: string) {
     return this.prisma.memberships.findMany({
-      where: { userId },
+      where: { userId, organisation: { deletedAt: null } },
       select: { organisationId: true, role: true },
     });
   }

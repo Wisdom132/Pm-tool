@@ -13,6 +13,7 @@
 // ============================================================
 
 import { resolvePageContext } from "./page-context.js";
+import { editingParams, resolveSite } from "./site-resolver.js";
 import { resolveServiceUrl } from "./config.js";
 import { getSessionId } from "./auth-storage.js";
 import { getShadowRoot, isOwnUi } from "./shadow-host.js";
@@ -1235,20 +1236,46 @@ function onKeydown(e) {
  * a text search can land in more than one place and opening the wrong file
  * is worse than asking.
  */
-async function locateThenOpenSource(el) {
-  const text = el.textContent.trim().replace(/\s+/g, " ");
-  if (!text) return;
-
-  const ctx = resolvePageContext({
+/**
+ * Everything the editing endpoints need, resolved once per page.
+ *
+ * The page still supplies the build commit — that is what keeps a change
+ * request's diff to just these edits — but the repository and branch now
+ * come from the site registry, so a page cannot name a repository its
+ * editors were never granted.
+ */
+async function editingContext({ force = false } = {}) {
+  const page = resolvePageContext({
     dataset: document.documentElement.dataset,
     hostname: window.location.hostname,
   });
 
-  if (!ctx.repo || !ctx.branch) {
-    toast.show(
-      "This element has no build annotation, and the page does not say which repository it came from.",
-      { tone: "warn", duration: 5000 }
-    );
+  const stored = await chrome.storage.sync.get(["prServiceUrl"]);
+  const site = await resolveSite((message) => chrome.runtime.sendMessage(message), {
+    hostname: window.location.hostname,
+    token: (await getSessionId()) || "",
+    serviceUrl: resolveServiceUrl(stored.prServiceUrl),
+    force,
+  });
+
+  return {
+    ...page,
+    ...site,
+    // The branch the *server* will use: the registered one, or the page's
+    // when the site takes it from there.
+    branch: site.branch || page.branch,
+    params: site.known ? editingParams(site, page) : null,
+  };
+}
+
+async function locateThenOpenSource(el) {
+  const text = el.textContent.trim().replace(/\s+/g, " ");
+  if (!text) return;
+
+  const ctx = await editingContext();
+
+  if (!ctx.known) {
+    toast.show(ctx.reason, { tone: "warn", duration: 6000 });
     return;
   }
 
@@ -1261,10 +1288,10 @@ async function locateThenOpenSource(el) {
   const response = await chrome.runtime.sendMessage({
     type: "API_POST",
     payload: {
-      path: "/api/locate",
+      path: "/api/editing/locate",
       token: (await getSessionId()) || "",
       serviceUrl: resolveServiceUrl(stored.prServiceUrl),
-      body: { repo: ctx.repo, branch: ctx.branch, text },
+      body: { environmentId: ctx.environmentId, text },
     },
   });
 
@@ -1321,10 +1348,7 @@ async function showSourcePanel(el, ref) {
     root,
     element: el,
     ref,
-    ctx: resolvePageContext({
-      dataset: document.documentElement.dataset,
-      hostname: window.location.hostname,
-    }),
+    ctx: await editingContext(),
     onStage: stageSourceEdit,
     onPreview: previewSourceFile,
     onRevert: revertSourcePreview,
@@ -1613,10 +1637,7 @@ async function showSubmitPanel() {
   panel = await openSubmitPanel({
     root,
     session,
-    ctx: resolvePageContext({
-      dataset: document.documentElement.dataset,
-      hostname: window.location.hostname,
-    }),
+    ctx: await editingContext(),
     onOpen: () => {
       toast.hide();
       labels.hide();

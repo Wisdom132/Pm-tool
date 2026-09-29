@@ -20,10 +20,12 @@ async function renderPreview() {
   const text = document.getElementById('status-text');
   if (connected) {
     dot.className    = 'status-dot green';
-    text.textContent = login ? `Connected as @${login}` : 'Connected';
+    // A name or an email address, not a provider handle — the extension
+    // has no GitHub identity any more.
+    text.textContent = login ? `Signed in as ${login}` : 'Signed in';
   } else {
     dot.className    = 'status-dot yellow';
-    text.textContent = 'Not connected';
+    text.textContent = 'Not signed in';
   }
 
   // Service URL preview
@@ -33,6 +35,7 @@ async function renderPreview() {
 
   // Disconnect button visibility
   document.getElementById('disconnect-btn').style.display = connected ? '' : 'none';
+  document.getElementById('disconnect-btn').textContent = 'Sign out';
 
   // Hint
   document.getElementById('hint-section').style.display = connected ? 'none' : 'block';
@@ -128,20 +131,41 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('save-btn').addEventListener('click', save);
 
-  document.getElementById('disconnect-btn').addEventListener('click', async () => {
+  document.getElementById('sign-in-btn').addEventListener('click', async () => {
+    const input = document.getElementById('sign-in-token');
+    const errorEl = document.getElementById('sign-in-error');
+    const button = document.getElementById('sign-in-btn');
     const stored = await chrome.storage.sync.get(['prServiceUrl']);
-    const sessionId = await getSessionId();
-    if (sessionId) {
-      // Revoke the GitHub token so the next OAuth flow shows the full
-      // consent screen (including org access) from scratch.
-      const serviceUrl = resolveServiceUrl(stored.prServiceUrl);
-      try {
-        await fetch(`${serviceUrl}/api/auth/revoke`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${sessionId}` },
-        });
-      } catch { /* ignore — still disconnect locally */ }
+
+    errorEl.style.display = 'none';
+    button.disabled = true;
+    button.textContent = 'Checking…';
+
+    // The background worker verifies the token against /auth/me before
+    // storing it: a wrong token in chrome.storage fails later on somebody's
+    // page, where the cause is invisible.
+    const response = await chrome.runtime.sendMessage({
+      type: 'SIGN_IN',
+      payload: { token: input.value, serviceUrl: resolveServiceUrl(stored.prServiceUrl) },
+    });
+
+    button.disabled = false;
+    button.textContent = 'Sign in';
+
+    if (response?.error) {
+      errorEl.textContent = response.error;
+      errorEl.style.display = '';
+      return;
     }
+
+    input.value = '';
+    renderPreview();
+  });
+
+  document.getElementById('disconnect-btn').addEventListener('click', async () => {
+    // Local only. The token stays valid server-side so it can be revoked
+    // from the dashboard, where its last-used time is visible — signing out
+    // of one browser should not invalidate another.
     await clearSession();
     renderPreview();
   });

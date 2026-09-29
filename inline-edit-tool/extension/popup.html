@@ -203,7 +203,14 @@
 
     <!-- First-time hint -->
     <div class="hint" id="hint-section" style="display:none">
-      Click <strong>Submit PR</strong> on any page to connect your GitHub account.
+      <p style="margin:0 0 8px">
+        Paste a token from the dashboard — <strong>Your account → Browser
+        extension</strong>. It signs you in to Inline Edit, not to GitHub,
+        so no repository credential ever reaches this browser.
+      </p>
+      <input id="sign-in-token" type="password" placeholder="Paste your extension token" autocomplete="off" />
+      <button class="btn btn-primary" id="sign-in-btn" style="margin-top:8px;width:100%">Sign in</button>
+      <p id="sign-in-error" style="margin:8px 0 0;color:#dc2626;display:none"></p>
     </div>
 
     <!-- Edit form — only Service URL; auth is via OAuth -->

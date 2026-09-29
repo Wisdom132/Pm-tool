@@ -350,9 +350,10 @@ export async function openSourcePanel({
     const token = (await getSessionId()) || "";
     const serviceUrl = resolveServiceUrl(stored.prServiceUrl);
 
-    if (!ctx.repo || !ctx.branch) {
+    if (!ctx.known) {
       fail(
-        "This page does not say which repository it was built from, so the file cannot be fetched."
+        ctx.reason ||
+          "This hostname is not registered, so the file cannot be fetched. Register it in the dashboard."
       );
       return { close };
     }
@@ -362,8 +363,8 @@ export async function openSourcePanel({
         type: "API_FETCH",
         payload: {
           path:
-            `/api/file?repo=${encodeURIComponent(ctx.repo)}` +
-            `&branch=${encodeURIComponent(ctx.branch)}` +
+            `/api/editing/file?environmentId=${encodeURIComponent(ctx.environmentId)}` +
+            `&ref=${encodeURIComponent(ctx.commit || ctx.branch)}` +
             `&path=${encodeURIComponent(path)}`,
           token,
           serviceUrl,

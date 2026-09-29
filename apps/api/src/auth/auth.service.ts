@@ -1,4 +1,4 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { AuthRepository } from './auth.repository';
 import { MailerService } from './mailer.service';
 import { createToken, hashToken } from '../common/tokens';
@@ -89,6 +89,42 @@ export class AuthService {
     };
   }
 
+  /** Set or clear a display name. */
+  async updateProfile(userId: string, name: string) {
+    const trimmed = name.trim();
+    const user = await this.repository.updateName(userId, trimmed || null);
+    return { user };
+  }
+
+  /**
+   * Mint a token for the browser extension.
+   *
+   * The extension cannot receive a magic link — it has no inbox — so an
+   * already-signed-in person creates one here and pastes it in. It is a
+   * session like any other, which means it appears in the list below and can
+   * be revoked on its own.
+   *
+   * Returned exactly once. Only the hash is stored, so there is no way to
+   * show it again, which is the property that makes losing it safe.
+   */
+  async createExtensionToken(userId: string, label?: string) {
+    const token = await this.createSession(userId, 'extension', {
+      userAgent: label?.slice(0, 255) ?? 'Browser extension',
+    });
+
+    return { token, expiresInDays: SESSION_TTL_DAYS };
+  }
+
+  listExtensionTokens(userId: string) {
+    return this.repository.listExtensionSessions(userId);
+  }
+
+  async revokeToken(userId: string, id: string) {
+    const revoked = await this.repository.revokeSessionById(userId, id);
+    if (!revoked) throw new NotFoundException('No such token.');
+    return { revoked: true };
+  }
+
   private async createSession(
     userId: string,
     kind: 'dashboard' | 'extension',
@@ -120,14 +156,42 @@ export class AuthService {
     const existing = await this.repository.findUserByEmail(email);
     if (existing) {
       await this.repository.touchUser(existing.id);
+      // Also on returning sign-ins: someone already registered who is later
+      // invited to a second organisation would otherwise never join it.
+      await this.acceptInvitations(existing.id, email);
       return existing;
     }
 
+    // An invited person joins what they were invited to. Creating them a
+    // second, empty organisation as well would be a confusing first
+    // impression — and before this was wired, they got a user row with no
+    // membership at all and a dashboard that could show them nothing.
     if (await this.repository.hasPendingInvitation(email)) {
-      return this.repository.createUser(email);
+      const user = await this.repository.createUser(email);
+      await this.acceptInvitations(user.id, email);
+      return user;
     }
 
     return this.repository.createUserWithOrganisation(email, organisationNameFor(email));
+  }
+
+  /**
+   * Accepting invitations must never be what stops someone signing in.
+   *
+   * If a team referenced by an invitation has been deleted mid-transaction,
+   * or the organisation is gone, the right outcome is a sign-in with one
+   * fewer membership and a log line — not a failed login with no
+   * explanation.
+   */
+  private async acceptInvitations(userId: string, email: string) {
+    try {
+      const accepted = await this.repository.acceptPendingInvitations(userId, email);
+      if (accepted > 0) {
+        this.logger.log(`${email} accepted ${accepted} invitation(s) on sign-in`);
+      }
+    } catch (err) {
+      this.logger.error(`Could not accept invitations for ${email}: ${(err as Error).message}`);
+    }
   }
 }
 

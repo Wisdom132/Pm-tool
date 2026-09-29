@@ -1,89 +1,159 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { Button } from 'primeng/button';
 import { Tag } from 'primeng/tag';
 import { Avatar } from 'primeng/avatar';
 import { Checkbox } from 'primeng/checkbox';
-import { PageHeader, EmptyState } from '../../../design-system';
-import { MOCK_TEAMS, MOCK_MEMBERS, MOCK_SITES } from '../../core/mock-data';
+import { Message } from 'primeng/message';
+import { Skeleton } from 'primeng/skeleton';
+import { PageHeader, EmptyState, ErrorState } from '../../../design-system';
+import { MembersApi, SitesApi, TeamsApi } from '../../core/api';
+import { createLoader } from '../../core/load-state';
+import { Session } from '../../core/session';
+import type { Person, SiteEnvironment, Team } from '../../core/api.types';
 
+/**
+ * One team: which sites it can edit, and who is in it.
+ *
+ * Both are saved as a whole set (`PUT`), so a checkbox writes immediately
+ * rather than accumulating into a Save button. That matches what the
+ * endpoint does and avoids a screen that looks saved but is not.
+ */
 @Component({
   selector: 'app-team-detail',
-  imports: [RouterLink, FormsModule, Button, Tag, Avatar, Checkbox, PageHeader, EmptyState],
+  imports: [
+    RouterLink,
+    FormsModule,
+    Button,
+    Tag,
+    Avatar,
+    Checkbox,
+    Message,
+    Skeleton,
+    PageHeader,
+    EmptyState,
+    ErrorState,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (team; as t) {
-      <ds-page-header [title]="t.name" [subtitle]="'Team · ' + t.memberIds.length + ' people · ' + siteIds().length + ' sites'">
-        @if (!t.isDefault) {
-          <p-button label="Delete team" [text]="true" severity="danger" size="small" dsActions />
+    @if (loader.state() === 'error') {
+      <div class="ds-surface">
+        <ds-error-state
+          title="Could not load this team"
+          [detail]="loader.error() ?? 'It may have been deleted.'"
+          (retry)="reload()" />
+      </div>
+    } @else if (loader.state() === 'loading') {
+      <div class="ds-surface panel">
+        <p-skeleton width="30%" height="1.4rem" />
+        <p-skeleton width="60%" height="1rem" />
+      </div>
+    } @else if (team(); as t) {
+      <ds-page-header [title]="t.name" [subtitle]="subtitle(t)">
+        @if (!t.isDefault && isAdmin()) {
+          <p-button
+            [label]="deleting() ? 'Deleting…' : 'Delete team'"
+            [text]="true"
+            severity="danger"
+            size="small"
+            [disabled]="deleting()"
+            dsActions
+            (onClick)="remove(t)" />
         }
       </ds-page-header>
 
       <a routerLink="/teams" class="back"><i class="pi pi-arrow-left"></i> All teams</a>
 
+      @if (error()) {
+        <p-message severity="error" [closable]="true" (onClose)="error.set('')">{{ error() }}</p-message>
+      }
+
       <section class="ds-surface panel">
         <header>
           <h2>Sites</h2>
-          <span class="muted">What this team is allowed to edit</span>
+          <span class="muted">
+            @if (saving() === 'sites') { Saving… } @else { What this team is allowed to edit }
+          </span>
         </header>
 
         @if (t.isDefault) {
           <p class="locked">
-            <i class="pi pi-lock"></i>
-            The default team always covers every site, so that a new member is
-            never left with an empty dashboard. Make another team to narrow
-            access.
+            <i class="pi pi-info-circle"></i>
+            Every newly registered site is added to this team automatically, and
+            everyone who accepts an invitation joins it — so it is what stops a
+            new editor signing in to an empty dashboard. You can still narrow it
+            here, but new sites will keep appearing.
           </p>
         }
 
-        <div class="options">
-          @for (s of sites; track s.id) {
-            <label class="option" [class.disabled]="t.isDefault">
-              <p-checkbox
-                [binary]="true"
-                [disabled]="t.isDefault"
-                [ngModel]="siteIds().includes(s.id)"
-                (ngModelChange)="toggleSite(s.id)" />
-              <span class="text">
-                <strong>{{ s.hostname }}</strong>
-                <small>{{ s.repository }} · {{ s.branch ?? 'branch from the page' }}</small>
-              </span>
-              <p-tag [value]="s.label" severity="secondary" [rounded]="true" />
-            </label>
-          }
-        </div>
+        @if (!sites().length) {
+          <ds-empty-state
+            icon="pi pi-globe"
+            title="No sites registered"
+            description="Register a site first — until then there is nothing to grant."
+            size="sm" />
+        } @else {
+          <div class="options">
+            @for (s of sites(); track s.id) {
+              <label class="option" [class.disabled]="!isAdmin()">
+                <p-checkbox
+                  [binary]="true"
+                  [disabled]="!isAdmin() || saving() === 'sites'"
+                  [ngModel]="siteIds().includes(s.siteId)"
+                  (ngModelChange)="toggleSite(s.siteId)" />
+                <span class="text">
+                  <strong>{{ s.hostname }}</strong>
+                  <small>{{ s.repository }} · {{ s.branch ?? 'branch from the page' }}</small>
+                </span>
+                <p-tag [value]="s.label" severity="secondary" [rounded]="true" />
+              </label>
+            }
+          </div>
+        }
       </section>
 
       <section class="ds-surface panel">
         <header>
           <h2>Members</h2>
-          <p-button label="Add people" icon="pi pi-plus" size="small" [text]="true" />
+          <span class="muted">
+            @if (saving() === 'members') { Saving… } @else { {{ t.members.length }} in this team }
+          </span>
         </header>
 
-        @if (members.length) {
+        @if (!candidates().length) {
+          <ds-empty-state
+            icon="pi pi-users"
+            title="Nobody to add"
+            description="Invite someone from the People page first."
+            size="sm" />
+        } @else {
           <ul class="people">
-            @for (m of members; track m.id) {
+            @for (p of candidates(); track p.id) {
               <li>
-                <p-avatar [label]="(m.name || m.email).charAt(0).toUpperCase()" shape="circle" />
+                @if (isAdmin()) {
+                  <p-checkbox
+                    [binary]="true"
+                    [disabled]="saving() === 'members'"
+                    [ngModel]="memberIds().includes(p.id)"
+                    (ngModelChange)="toggleMember(p.id)" />
+                }
+                <p-avatar [label]="(p.name || p.email).charAt(0).toUpperCase()" shape="circle" />
                 <span class="text">
-                  <strong>{{ m.name || m.email }}</strong>
-                  <small>{{ m.email }}</small>
+                  <strong>{{ p.name || p.email }}</strong>
+                  <small>{{ p.email }}</small>
                 </span>
                 <p-tag
-                  [value]="m.role === 'admin' ? 'Admin' : 'Editor'"
-                  [severity]="m.role === 'admin' ? 'info' : 'secondary'"
+                  [value]="p.role === 'admin' ? 'Admin' : 'Editor'"
+                  [severity]="p.role === 'admin' ? 'info' : 'secondary'"
                   [rounded]="true" />
-                <p-button icon="pi pi-times" [text]="true" [rounded]="true" severity="secondary" size="small" ariaLabel="Remove" />
               </li>
             }
           </ul>
-        } @else {
-          <ds-empty-state
-            icon="pi pi-users"
-            title="Nobody in this team"
-            description="A team with no members is a rule nobody is subject to."
-            size="sm" />
+          <small class="hint">
+            Admins reach every site regardless of team, so adding one changes
+            nothing about their access.
+          </small>
         }
       </section>
     }
@@ -105,21 +175,103 @@ import { MOCK_TEAMS, MOCK_MEMBERS, MOCK_SITES } from '../../core/mock-data';
     .option small, .people small { font-size: var(--ds-t-caption); color: var(--p-text-muted-color); }
     .people { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--ds-s-2); }
     .people li { display: flex; align-items: center; gap: var(--ds-s-3); }
+    .hint { font-size: var(--ds-t-caption); line-height: 1.5; color: var(--p-text-muted-color); }
   `,
 })
 export class TeamDetail {
-  private readonly id = inject(ActivatedRoute).snapshot.paramMap.get('id');
+  private readonly teamsApi = inject(TeamsApi);
+  private readonly sitesApi = inject(SitesApi);
+  private readonly membersApi = inject(MembersApi);
+  private readonly session = inject(Session);
+  private readonly router = inject(Router);
+  private readonly id = inject(ActivatedRoute).snapshot.paramMap.get('id') ?? '';
 
-  protected readonly team = MOCK_TEAMS.find((t) => t.id === this.id) ?? null;
+  protected readonly loader = createLoader<Team | null>(null);
+  protected readonly team = this.loader.data;
+  protected readonly sites = signal<SiteEnvironment[]>([]);
+  protected readonly candidates = signal<Person[]>([]);
+  protected readonly saving = signal<'sites' | 'members' | null>(null);
+  protected readonly deleting = signal(false);
+  protected readonly error = signal('');
+  protected readonly isAdmin = this.session.isAdmin;
 
-  /** Local until there is an API to save to. */
-  protected readonly siteIds = signal<string[]>(this.team?.siteIds ?? []);
+  /** Derived from the loaded team, so a save that returns the team updates both. */
+  protected readonly siteIds = computed(() => this.team()?.sites.map((s) => s.site.id) ?? []);
+  protected readonly memberIds = computed(() => this.team()?.members.map((m) => m.user.id) ?? []);
 
-  protected readonly sites = MOCK_SITES;
+  constructor() {
+    this.reload();
+    this.sitesApi.list().subscribe({ next: (s) => this.sites.set(s) });
+    this.membersApi.list().subscribe({
+      // Only accepted members: a pending invitation has no user id yet, so
+      // it cannot be put in a team.
+      next: (people) => this.candidates.set(people.filter((p) => p.kind === 'member')),
+    });
+  }
 
-  protected readonly members = MOCK_MEMBERS.filter((m) => this.team?.memberIds.includes(m.id));
+  protected reload() {
+    this.loader.load(this.teamsApi.get(this.id));
+  }
 
-  protected toggleSite(id: string) {
-    this.siteIds.update((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]));
+  protected subtitle(team: Team) {
+    const people = team.members.length === 1 ? '1 person' : `${team.members.length} people`;
+    const sites = team.sites.length === 1 ? '1 site' : `${team.sites.length} sites`;
+    return `Team · ${people} · ${sites}`;
+  }
+
+  /**
+   * Writes the whole set on every toggle.
+   *
+   * The endpoint is a `PUT`, and sending the current set is both what it
+   * expects and what makes a concurrent change by another admin visible —
+   * the response is the team as it now stands.
+   */
+  protected toggleSite(siteId: string) {
+    const next = this.siteIds().includes(siteId)
+      ? this.siteIds().filter((id) => id !== siteId)
+      : [...this.siteIds(), siteId];
+
+    this.save('sites', this.teamsApi.setSites(this.id, next));
+  }
+
+  protected toggleMember(userId: string) {
+    const next = this.memberIds().includes(userId)
+      ? this.memberIds().filter((id) => id !== userId)
+      : [...this.memberIds(), userId];
+
+    this.save('members', this.teamsApi.setMembers(this.id, next));
+  }
+
+  private save(what: 'sites' | 'members', request: ReturnType<TeamsApi['setSites']>) {
+    this.saving.set(what);
+    this.error.set('');
+
+    request.subscribe({
+      next: (team) => {
+        this.saving.set(null);
+        // The response is the new truth, so the checkboxes follow it rather
+        // than the optimistic value — a rejected id then visibly snaps back.
+        this.loader.set(team);
+      },
+      error: (err: Error) => {
+        this.saving.set(null);
+        this.error.set(err.message);
+        // Re-read, so the UI shows what was actually saved.
+        this.reload();
+      },
+    });
+  }
+
+  protected remove(team: Team) {
+    this.deleting.set(true);
+    this.error.set('');
+
+    this.teamsApi.remove(team.id).subscribe({
+      next: () => void this.router.navigate(['/teams']),
+      error: (err: Error) => {
+        this.deleting.set(false);
+        this.error.set(err.message);
+      },
+    });
   }
 }

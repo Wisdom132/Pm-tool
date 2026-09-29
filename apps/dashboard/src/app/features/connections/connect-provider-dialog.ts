@@ -1,9 +1,10 @@
-import { ChangeDetectionStrategy, Component, model, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, model, output, signal } from '@angular/core';
 import { Dialog } from 'primeng/dialog';
 import { Button } from 'primeng/button';
 import { Message } from 'primeng/message';
 import { ProgressSpinner } from 'primeng/progressspinner';
-import { Provider } from '../../core/mock-data';
+import { ConnectionsApi } from '../../core/api';
+import type { Provider } from '../../core/api.types';
 
 interface ProviderOption {
   id: Provider;
@@ -111,23 +112,16 @@ interface ProviderOption {
       @if (step() === 'authorising') {
         <div class="waiting">
           <p-progressspinner styleClass="spin" strokeWidth="4" />
-          <strong>Waiting for {{ selected()?.name }}…</strong>
-          <small>Approve the request in the window that opened.</small>
+          <strong>Taking you to {{ selected()?.name }}…</strong>
+          <small>Approve the installation, and you will be sent back here.</small>
         </div>
       }
 
-      <!-- ── 4. Done ───────────────────────────────────────── -->
-      @if (step() === 'done') {
-        <div class="done">
-          <span class="tick"><i class="pi pi-check"></i></span>
-          <strong>{{ selected()?.name }} connected</strong>
-          <small>
-            <code>iFrontida</code> · 14 repositories available
-          </small>
-          <p class="next">
-            Next: register a site, so the editor knows which repository a
-            hostname belongs to.
-          </p>
+      @if (step() === 'failed') {
+        <div class="waiting">
+          <span class="cross"><i class="pi pi-times"></i></span>
+          <strong>Could not start the connection</strong>
+          <small>{{ error() }}</small>
         </div>
       }
 
@@ -143,8 +137,8 @@ interface ProviderOption {
           @case ('authorising') {
             <p-button label="Cancel" [text]="true" severity="secondary" (onClick)="step.set('review')" />
           }
-          @case ('done') {
-            <p-button label="Register a site" (onClick)="finish()" />
+          @case ('failed') {
+            <p-button label="Back" [text]="true" severity="secondary" (onClick)="step.set('review')" />
           }
         }
       </ng-template>
@@ -175,12 +169,10 @@ interface ProviderOption {
     .scopes strong { font-size: var(--ds-t-small); color: var(--p-text-color); }
     .scopes small { font-size: var(--ds-t-caption); line-height: 1.5; color: var(--p-text-muted-color); }
 
-    .waiting, .done { display: grid; justify-items: center; gap: var(--ds-s-3); padding: var(--ds-s-8) var(--ds-s-4); text-align: center; }
-    .waiting strong, .done strong { font-size: var(--ds-t-title); }
-    .waiting small, .done small { font-size: var(--ds-t-small); color: var(--p-text-muted-color); }
-    .tick { width: 48px; height: 48px; border-radius: 50%; background: var(--ds-success-soft); color: var(--ds-success-ink); display: grid; place-items: center; font-size: 20px; }
-    .done code { font-family: var(--ds-font-mono, ui-monospace, monospace); color: var(--p-text-color); }
-    .next { margin: var(--ds-s-2) 0 0; max-width: 34ch; font-size: var(--ds-t-caption); line-height: 1.55; color: var(--p-text-muted-color); }
+    .waiting { display: grid; justify-items: center; gap: var(--ds-s-3); padding: var(--ds-s-8) var(--ds-s-4); text-align: center; }
+    .waiting strong { font-size: var(--ds-t-title); }
+    .waiting small { font-size: var(--ds-t-small); color: var(--p-text-muted-color); }
+    .cross { width: 48px; height: 48px; border-radius: 50%; background: var(--ds-danger-soft, var(--ds-muted-bg)); color: var(--p-red-500, #dc2626); display: grid; place-items: center; font-size: 20px; }
     :host ::ng-deep .spin { width: 40px; height: 40px; }
   `,
 })
@@ -189,7 +181,10 @@ export class ConnectProviderDialog {
   readonly connected = output<Provider>();
   readonly registerSite = output<void>();
 
-  protected readonly step = signal<'choose' | 'review' | 'authorising' | 'done'>('choose');
+  private readonly api = inject(ConnectionsApi);
+
+  protected readonly step = signal<'choose' | 'review' | 'authorising' | 'failed'>('choose');
+  protected readonly error = signal<string>('');
   protected readonly selected = signal<ProviderOption | null>(null);
 
   protected readonly providers: ProviderOption[] = [
@@ -207,7 +202,10 @@ export class ConnectProviderDialog {
       icon: 'pi pi-code',
       blurb: 'gitlab.com or self-hosted',
       changeNoun: 'merge request',
-      available: true,
+      // The provider interface is in place; the GitLab implementation is
+      // not (P1.4). Showing it as available would walk an admin through a
+      // consent screen and then fail.
+      available: false,
     },
     {
       id: 'bitbucket',
@@ -220,7 +218,7 @@ export class ConnectProviderDialog {
   ];
 
   protected heading() {
-    return this.step() === 'done' ? 'Connected' : 'Connect a provider';
+    return this.step() === 'failed' ? 'Connect a provider' : 'Connect a provider';
   }
 
   protected subheading() {
@@ -230,9 +228,9 @@ export class ConnectProviderDialog {
       case 'review':
         return `What ${this.selected()?.name} will be asked to allow`;
       case 'authorising':
-        return 'Approve the request to continue';
+        return 'Approve the installation to continue';
       default:
-        return 'One connection, every editor on your team';
+        return 'Something went wrong before you left this page';
     }
   }
 
@@ -241,21 +239,33 @@ export class ConnectProviderDialog {
     this.step.set('review');
   }
 
+  /**
+   * Leave for the provider.
+   *
+   * A full-page navigation rather than a popup: the install flow is several
+   * screens on GitHub's side, it can require an organisation owner's
+   * approval, and a popup that is blocked or closed leaves this dialog
+   * waiting forever. The callback brings the admin back to
+   * `/connections?connected=…`, which is where the outcome is reported.
+   */
   protected authorise() {
     this.step.set('authorising');
-    // Mock: the real flow leaves for the provider and returns via callback.
-    setTimeout(() => this.step.set('done'), 1400);
-  }
 
-  protected finish() {
-    const id = this.selected()?.id;
-    if (id) this.connected.emit(id);
-    this.visible.set(false);
-    this.registerSite.emit();
+    this.api.githubInstallUrl().subscribe({
+      next: ({ url }) => {
+        // Not router.navigate: this is a different origin.
+        window.location.assign(url);
+      },
+      error: (err: Error) => {
+        this.error.set(err.message);
+        this.step.set('failed');
+      },
+    });
   }
 
   protected reset() {
     this.step.set('choose');
     this.selected.set(null);
+    this.error.set('');
   }
 }

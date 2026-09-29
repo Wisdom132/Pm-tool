@@ -6,8 +6,7 @@ import { getSessionId, setSession } from './auth-storage.js';
 // ============================================================
 //  Inline Edit Tool — background service worker
 //
-//  GITHUB_AUTH — launches GitHub OAuth via chrome.identity,
-//                stores the resulting session id, returns it.
+//  SIGN_IN     — verifies a dashboard-issued token, then stores it.
 //  API_FETCH   — proxies GET requests to the API so that
 //                content scripts (which inherit the page's HTTPS
 //                context) are not blocked by mixed-content rules.
@@ -21,40 +20,52 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
-  // ── GitHub OAuth flow ──────────────────────────────────────
-  if (message.type === 'GITHUB_AUTH') {
-    const serviceUrl = resolveServiceUrl(message.payload.serviceUrl);
-    const authUrl = `${serviceUrl}/api/auth/extension?ext_id=${chrome.runtime.id}`;
+  // ── Sign in with a token from the dashboard ────────────────
+  //
+  //  There is no OAuth flow any more. The extension authenticates to *us*,
+  //  not to GitHub — so no provider token ever reaches the browser, and a
+  //  leaked extension token is not a leaked GitHub token.
+  //
+  //  It cannot receive a magic link either, having no inbox, so a
+  //  signed-in person creates a token in the dashboard and pastes it in.
+  //  This verifies it before storing, because a token that is wrong in
+  //  chrome.storage fails later on a page, where the cause is invisible.
+  if (message.type === 'SIGN_IN') {
+    (async () => {
+      const serviceUrl = resolveServiceUrl(message.payload.serviceUrl);
+      const token = String(message.payload.token || '').trim();
 
-    chrome.identity.launchWebAuthFlow({ url: authUrl, interactive: true }, (redirectUrl) => {
-      if (chrome.runtime.lastError || !redirectUrl) {
-        const raw = chrome.runtime.lastError?.message || 'Auth cancelled';
-
-        // Chrome reports an unreachable start page as "Authorization page
-        // could not be loaded", which says nothing about the cause. By far
-        // the most common one is that the API is not running.
-        const unreachable = /could not be loaded|ERR_|net::/i.test(raw);
-        sendResponse({
-          error: unreachable
-            ? `Could not reach the Inline Edit API at ${serviceUrl}. ` +
-              `Start it with "npm run dev:api", or set a different Service URL in the extension popup.`
-            : raw,
-          serviceUrl,
-          unreachable,
-        });
+      if (!token) {
+        sendResponse({ error: 'Paste the token from the dashboard.' });
         return;
       }
+
       try {
-        const params = new URL(redirectUrl).searchParams;
-        const token  = params.get('token');
-        if (!token) throw new Error('No token in redirect URL');
-        const login = params.get('login');
-        setSession(token, login);
-        sendResponse({ token, login });
+        const res = await fetch(`${serviceUrl}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.status === 401) {
+          sendResponse({ error: 'That token is not valid, or it has been revoked.' });
+          return;
+        }
+        if (!res.ok) {
+          sendResponse({ error: `The API answered ${res.status}.` });
+          return;
+        }
+
+        const me = await res.json();
+        const label = me?.user?.name || me?.user?.email || null;
+        await setSession(token, label);
+        sendResponse({ token, login: label, organisations: me?.organisations ?? [] });
       } catch (err) {
-        sendResponse({ error: err.message });
+        sendResponse({
+          error:
+            `Could not reach the Inline Edit API at ${serviceUrl}. ` +
+            `Start it with "npm run dev:api", or set a different Service URL below.`,
+        });
       }
-    });
+    })();
 
     return true; // async response
   }
@@ -186,7 +197,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         const { _authToken, _serviceUrl, ...serverPayload } = message.payload;
 
-        const res = await fetch(`${serviceUrl}/api/create-pr`, {
+        const res = await fetch(`${serviceUrl}/api/editing/change-requests`, {
           method:  'POST',
           headers: {
             'Content-Type':  'application/json',
@@ -198,9 +209,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          sendResponse({ error: data.error || `HTTP ${res.status}` });
+          // The API answers `{ message }`; the old service answered
+          // `{ error }`. Accept either, so a stale deployment still reports
+          // something readable.
+          const message = Array.isArray(data.message) ? data.message[0] : data.message;
+          sendResponse({ error: message || data.error || `HTTP ${res.status}` });
         } else {
-          sendResponse({ prUrl: data.prUrl, prNumber: data.prNumber, branchName: data.branchName });
+          sendResponse({
+            // `changeUrl` is the provider-neutral name; prUrl is kept
+            // because the panels still read it.
+            prUrl: data.changeUrl || data.prUrl,
+            prNumber: data.changeNumber || data.prNumber,
+            branchName: data.branchName,
+            staleness: data.staleness,
+            applied: data.applied,
+            failures: data.failures,
+          });
         }
       } catch (err) {
         sendResponse({ error: err.message });

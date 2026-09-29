@@ -15,6 +15,6 @@ import { MailerService } from './mailer.service';
     // Global, so routes are protected by default and opting out is explicit.
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
-  exports: [AuthService],
+  exports: [AuthService, MailerService],
 })
 export class AuthModule {}

@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Req, Res } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
-import { RequestLinkDto, VerifyDto } from './dto';
+import { CreateExtensionTokenDto, RequestLinkDto, UpdateProfileDto, VerifyDto } from './dto';
 import { Public } from './public.decorator';
 import { SESSION_COOKIE } from './auth.guard';
 import { CurrentSession, Session } from './session.decorator';
@@ -42,6 +42,35 @@ export class AuthController {
   @Get('me')
   me(@Session() session: CurrentSession) {
     return this.auth.describe(session.userId);
+  }
+
+  @Patch('me')
+  updateProfile(@Session() session: CurrentSession, @Body() dto: UpdateProfileDto) {
+    return this.auth.updateProfile(session.userId, dto.name);
+  }
+
+  /**
+   * A token for the browser extension, shown once.
+   *
+   * Only the hash is stored, so it cannot be shown again — which is what
+   * makes it safe to hand out and forget.
+   */
+  @Post('extension-tokens')
+  createExtensionToken(@Session() session: CurrentSession, @Body() dto: CreateExtensionTokenDto) {
+    return this.auth.createExtensionToken(session.userId, dto.label);
+  }
+
+  @Get('extension-tokens')
+  listExtensionTokens(@Session() session: CurrentSession) {
+    return this.auth.listExtensionTokens(session.userId);
+  }
+
+  @Delete('extension-tokens/:id')
+  revokeExtensionToken(
+    @Session() session: CurrentSession,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.auth.revokeToken(session.userId, id);
   }
 
   @Post('sign-out')

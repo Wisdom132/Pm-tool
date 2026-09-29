@@ -1,11 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, model, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, model, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Dialog } from 'primeng/dialog';
 import { Button } from 'primeng/button';
 import { InputText } from 'primeng/inputtext';
 import { Chip } from 'primeng/chip';
 import { Message } from 'primeng/message';
-import { Role } from '../../core/mock-data';
+import { forkJoin, of } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
+import { MembersApi } from '../../core/api';
+import type { Role } from '../../core/api.types';
 
 /**
  * Inviting people.
@@ -90,11 +93,23 @@ import { Role } from '../../core/mock-data';
       } @else {
         <div class="done">
           <span class="tick"><i class="pi pi-send"></i></span>
-          <strong>{{ emails().length }} invitation{{ emails().length === 1 ? '' : 's' }} on the way</strong>
-          <small>
-            They expire in 7 days. You can resend or revoke any of them from the
-            team list.
-          </small>
+          <strong>
+            {{ succeeded().length }} invitation{{ succeeded().length === 1 ? '' : 's' }} sent
+          </strong>
+          <small>They expire in 14 days. Revoke any of them from the People list.</small>
+
+          @if (failed().length) {
+            <!-- Per-address, because one refusal must not read as a total
+                 failure — and "already in this organisation" is the common
+                 one, which is not really an error at all. -->
+            <p-message severity="warn" [closable]="false" styleClass="failures">
+              <span class="failures-body">
+                @for (f of failed(); track f.email) {
+                  <span><strong>{{ f.email }}</strong> — {{ f.reason }}</span>
+                }
+              </span>
+            </p-message>
+          }
         </div>
       }
 
@@ -102,9 +117,9 @@ import { Role } from '../../core/mock-data';
         @if (!sent()) {
           <p-button label="Cancel" [text]="true" severity="secondary" (onClick)="visible.set(false)" />
           <p-button
-            [label]="emails().length > 1 ? 'Send ' + emails().length + ' invitations' : 'Send invitation'"
+            [label]="sending() ? 'Sending…' : (emails().length > 1 ? 'Send ' + emails().length + ' invitations' : 'Send invitation')"
             icon="pi pi-send"
-            [disabled]="!canSend()"
+            [disabled]="!canSend() || sending()"
             (onClick)="send()" />
         } @else {
           <p-button label="Done" (onClick)="visible.set(false)" />
@@ -141,14 +156,20 @@ import { Role } from '../../core/mock-data';
   `,
 })
 export class InviteDialog {
+  private readonly api = inject(MembersApi);
+
   readonly visible = model(false);
-  readonly invited = output<{ emails: string[]; role: Role }>();
+  /** Fired once, after sending, so the list refreshes with what landed. */
+  readonly invited = output<void>();
 
   protected readonly emails = signal<string[]>([]);
   protected readonly invalid = signal<string[]>([]);
   protected readonly draft = signal('');
   protected readonly role = signal<Role>('editor');
   protected readonly sent = signal(false);
+  protected readonly sending = signal(false);
+  protected readonly succeeded = signal<string[]>([]);
+  protected readonly failed = signal<{ email: string; reason: string }[]>([]);
 
   protected readonly roles: { value: Role; label: string; blurb: string }[] = [
     {
@@ -187,9 +208,37 @@ export class InviteDialog {
     this.emails.update((list) => list.filter((e) => e !== email));
   }
 
+  /**
+   * One request per address.
+   *
+   * The API invites one person at a time, and that is the right granularity:
+   * inviting five people where one is already a member should send four
+   * invitations and say so, not fail the batch. `forkJoin` with a
+   * per-request `catchError` is what keeps a rejection from cancelling the
+   * others.
+   */
   protected send() {
-    this.invited.emit({ emails: this.emails(), role: this.role() });
-    this.sent.set(true);
+    const role = this.role();
+    this.sending.set(true);
+
+    forkJoin(
+      this.emails().map((email) =>
+        this.api.invite({ email, role }).pipe(
+          map(() => ({ email, ok: true as const })),
+          catchError((err: Error) => of({ email, ok: false as const, reason: err.message })),
+        ),
+      ),
+    ).subscribe((results) => {
+      this.succeeded.set(results.filter((r) => r.ok).map((r) => r.email));
+      this.failed.set(
+        results
+          .filter((r): r is { email: string; ok: false; reason: string } => !r.ok)
+          .map((r) => ({ email: r.email, reason: r.reason })),
+      );
+      this.sending.set(false);
+      this.sent.set(true);
+      this.invited.emit();
+    });
   }
 
   protected reset() {
@@ -198,5 +247,8 @@ export class InviteDialog {
     this.draft.set('');
     this.role.set('editor');
     this.sent.set(false);
+    this.sending.set(false);
+    this.succeeded.set([]);
+    this.failed.set([]);
   }
 }

@@ -17,14 +17,6 @@ function escHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
-/** Persist repo + branch per hostname so future visits auto-fill. */
-async function saveSiteSettings(updates) {
-  const s = await chrome.storage.sync.get(["siteSettings"]);
-  const map = s.siteSettings || {};
-  const h = window.location.hostname;
-  map[h] = { ...(map[h] || {}), ...updates };
-  await chrome.storage.sync.set({ siteSettings: map });
-}
 
 /**
  * Build and mount the review/submit panel.
@@ -40,13 +32,15 @@ async function saveSiteSettings(updates) {
 export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted, onOpen }) {
   // A stale toast peeking out from behind the backdrop looks like a bug.
   onOpen?.();
-  const stored = await chrome.storage.sync.get(["prServiceUrl", "siteSettings"]);
+  const stored = await chrome.storage.sync.get(["prServiceUrl"]);
   const sessionId = await getSessionId();
 
-  const savedSettings = (stored.siteSettings || {})[window.location.hostname] || {};
-  let targetRepo = ctx.repo || savedSettings.repo || null;
-  let targetBranch = ctx.branch || savedSettings.branch || null;
-  let manualMode = !ctx.complete;
+  // From the site registry, via ctx — not from the page, and not picked
+  // here. A page cannot name a repository its editors were never granted,
+  // so the pickers this used to show would only offer one answer anyway.
+  const site = ctx;
+  const targetRepo = ctx.repository;
+  const targetBranch = ctx.branch;
 
   const edits = session.list();
   const currentUrl = window.location.href;
@@ -208,10 +202,10 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
     const response = await chrome.runtime.sendMessage({
       type: "API_POST",
       payload: {
-        path: "/api/locate",
+        path: "/api/editing/locate",
         token: (await getSessionId()) || "",
         serviceUrl: resolveServiceUrl(s.prServiceUrl),
-        body: { repo: targetRepo, branch: targetBranch, text: edit.originalText },
+        body: { environmentId: site.environmentId, text: edit.originalText },
       },
     });
 
@@ -276,8 +270,8 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
    */
   function refreshSubmitState() {
     const anyResolved = session.list().some((e) => e.sourceFile || e.i18nKey);
-    confirmBtn.disabled = !targetRepo || !targetBranch || !anyResolved;
-    issueBtn.disabled = !targetRepo;
+    confirmBtn.disabled = !site.known || !anyResolved;
+    issueBtn.disabled = !site.known;
 
     confirmBtn.title = anyResolved
       ? ""
@@ -406,149 +400,54 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
     connStatus.textContent = `✓ Connected${login ? ` as @${login}` : ""}`;
     connStatus.style.color = "#16a34a";
 
-    const hints = [describeSource(ctx.repoSource), describeSource(ctx.branchSource)].filter(
-      Boolean
-    );
-    const hint = hints.length ? ` (${[...new Set(hints)].join(", ")})` : "";
-    detectedText.textContent = `${targetRepo} @ ${targetBranch}${hint}`;
+    // The branch may legitimately be unset — a preview deploy takes it from
+    // the page, and `describeSource` says where that came from.
+    const hint = ctx.branchSource && !site.branch ? ` (${describeSource(ctx.branchSource)})` : "";
+    detectedText.textContent = `${targetRepo} @ ${targetBranch ?? "branch from the page"}${hint}`;
 
     detectedRow.style.display = "";
-    repo.wrap.style.display = "none";
-    branch.wrap.style.display = "none";
+    if (repo.wrap) repo.wrap.style.display = "none";
+    if (branch.wrap) branch.wrap.style.display = "none";
     step1.style.display = "none";
     step2.style.display = "";
     refreshSubmitState();
   }
 
-  async function loadRepos(token, serviceUrl) {
-    const response = await chrome.runtime.sendMessage({
-      type: "API_FETCH",
-      payload: { path: "/api/repos", token, serviceUrl },
-    });
-    if (response.error) throw new Error(response.error);
 
-    const login = await getSessionLogin();
-    const list = response.data.repos;
-    connStatus.textContent = `✓ Connected${login ? ` as @${login}` : ""} — ${list.length} repo${list.length === 1 ? "" : "s"}`;
-    connStatus.style.color = "#16a34a";
 
-    // Group by owner. A flat list is fine for one account, but as soon as an
-    // organisation is installed it becomes dozens of near-identical rows all
-    // prefixed with the same name.
-    const byOwner = new Map();
-    for (const r of list) {
-      const owner = r.full_name.split("/")[0];
-      if (!byOwner.has(owner)) byOwner.set(owner, []);
-      byOwner.get(owner).push(r);
-    }
-
-    for (const owner of [...byOwner.keys()].sort((a, b) => a.localeCompare(b))) {
-      const group = document.createElement("optgroup");
-      group.label = owner;
-
-      const owned = byOwner.get(owner).sort((a, b) => a.full_name.localeCompare(b.full_name));
-
-      for (const r of owned) {
-        const opt = document.createElement("option");
-        opt.value = r.full_name;
-        // The group already names the owner, so only the repo is shown.
-        opt.textContent = r.full_name.slice(owner.length + 1) + (r.private ? " \uD83D\uDD12" : "");
-        group.appendChild(opt);
-      }
-
-      repo.sel.appendChild(group);
-    }
-
+  /**
+   * This hostname is not in the site registry.
+   *
+   * There used to be a manual picker here. It is gone because the choice it
+   * offered is no longer the client's to make — and offering one would just
+   * produce a 404 from the API. The way out is the dashboard.
+   */
+  function showUnregistered() {
+    detectedRow.style.display = "";
+    detectedText.textContent =
+      site.reason || `${window.location.hostname} is not registered.`;
+    detectedText.style.color = "#b45309";
+    if (repo.wrap) repo.wrap.style.display = "none";
+    if (branch.wrap) branch.wrap.style.display = "none";
     step1.style.display = "none";
     step2.style.display = "";
-
-    if (targetRepo && list.some((r) => r.full_name === targetRepo)) {
-      repo.sel.value = targetRepo;
-      await loadBranches(targetRepo);
-    }
-  }
-
-  async function loadBranches(repoName) {
-    const s = await chrome.storage.sync.get(["prServiceUrl"]);
-    const token = (await getSessionId()) || "";
-    const serviceUrl = resolveServiceUrl(s.prServiceUrl);
-
-    branch.wrap.querySelector(`.${P}-branch-hint`)?.remove();
-
-    if (repoName) saveSiteSettings({ repo: repoName });
     confirmBtn.disabled = true;
-
-    if (!repoName) {
-      branch.sel.innerHTML = '<option value="">— select —</option>';
-      return;
-    }
-
-    branch.sel.innerHTML = '<option value="">Loading…</option>';
-
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: "API_FETCH",
-        payload: {
-          path: `/api/branches?repo=${encodeURIComponent(repoName)}`,
-          token,
-          serviceUrl,
-        },
-      });
-      if (response.error) throw new Error(response.error);
-
-      branch.sel.innerHTML = '<option value="">— select —</option>';
-      for (const b of response.data.branches) {
-        const opt = document.createElement("option");
-        opt.value = b;
-        opt.textContent = b;
-        branch.sel.appendChild(opt);
-      }
-
-      const candidate = ctx.branch || targetBranch;
-      const match = candidate
-        ? response.data.branches.find(
-            (b) => b === candidate || b.toLowerCase() === candidate.toLowerCase()
-          )
-        : null;
-
-      if (match) {
-        branch.sel.value = match;
-        targetBranch = match;
-        refreshSubmitState();
-        const hintEl = document.createElement("span");
-        hintEl.className = `${P}-branch-hint`;
-        hintEl.textContent = ctx.branch ? "auto-detected" : "remembered";
-        branch.wrap.appendChild(hintEl);
-        saveSiteSettings({ branch: match });
-      }
-    } catch (err) {
-      branch.sel.innerHTML = `<option value="">Error: ${escHtml(err.message)}</option>`;
-    }
-  }
-
-  async function enterManualMode(token, serviceUrl) {
-    manualMode = true;
-    detectedRow.style.display = "none";
-    repo.wrap.style.display = "";
-    branch.wrap.style.display = "";
-    confirmBtn.disabled = true;
-    await loadRepos(token, serviceUrl);
+    issueBtn.disabled = true;
   }
 
   /** Warn when the build commit is no longer on the branch. */
   async function checkPreviewFreshness(token, serviceUrl) {
-    if (!ctx.commit || !targetRepo || !targetBranch) return;
+    if (!ctx.commit || !site.known) return;
 
     const query =
-      `repo=${encodeURIComponent(targetRepo)}` +
-      `&branch=${encodeURIComponent(targetBranch)}` +
+      `environmentId=${encodeURIComponent(site.environmentId)}` +
       `&commit=${encodeURIComponent(ctx.commit)}`;
 
     let data;
     try {
       const response = await chrome.runtime.sendMessage({
         type: "API_FETCH",
-        payload: { path: `/api/preview-status?${query}`, token, serviceUrl },
+        payload: { path: `/api/editing/preview-status?${query}`, token, serviceUrl },
       });
       if (response.error) return;
       data = response.data;
@@ -568,8 +467,8 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
   }
 
   async function onConnected(token, serviceUrl) {
-    if (manualMode) {
-      await enterManualMode(token, serviceUrl);
+    if (!site.known) {
+      showUnregistered();
       return;
     }
     await showDetectedTarget();
@@ -578,7 +477,7 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
 
   // ── Submit ───────────────────────────────────────────────
   async function submit() {
-    if (!targetRepo || !targetBranch) return;
+    if (!site.known) return;
 
     const s = await chrome.storage.sync.get(["prServiceUrl"]);
     const token = (await getSessionId()) || "";
@@ -595,8 +494,7 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
           pageUrl: currentUrl,
           note: noteInput.value.trim(),
           edits: session.toPayloadEdits(),
-          repo: targetRepo,
-          branch: targetBranch,
+          ...site.params,
           buildCommit: ctx.commit || null,
           _authToken: token,
           _serviceUrl: serviceUrl,
@@ -624,7 +522,7 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
   }
 
   async function submitIssue() {
-    if (!targetRepo) return;
+    if (!site.known) return;
 
     const s = await chrome.storage.sync.get(["prServiceUrl"]);
     issueBtn.disabled = true;
@@ -635,11 +533,11 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
       const response = await chrome.runtime.sendMessage({
         type: "API_POST",
         payload: {
-          path: "/api/create-issue",
+          path: "/api/editing/issues",
           token: (await getSessionId()) || "",
           serviceUrl: resolveServiceUrl(s.prServiceUrl),
           body: {
-            repo: targetRepo,
+            environmentId: site.environmentId,
             pageUrl: currentUrl,
             note: noteInput.value.trim(),
             edits: session.toPayloadEdits(),
@@ -669,51 +567,24 @@ export async function openSubmitPanel({ root, session, ctx, onClose, onSubmitted
   }
 
   // ── Wiring ───────────────────────────────────────────────
-  changeBtn.addEventListener("click", async () => {
-    const s = await chrome.storage.sync.get(["prServiceUrl"]);
-    changeBtn.disabled = true;
-    try {
-      await enterManualMode(
-        (await getSessionId()) || "",
-        resolveServiceUrl(s.prServiceUrl)
-      );
-    } catch (err) {
-      resultEl.innerHTML = `<span style="color:#dc2626">${escHtml(err.message)}</span>`;
-      changeBtn.disabled = false;
-    }
+  changeBtn.addEventListener("click", () => {
+    // Re-pointing a hostname at a different repository decides where every
+    // future edit lands, so it is an admin action in the dashboard — not a
+    // dropdown in a panel over somebody's page.
+    resultEl.innerHTML =
+      '<span style="color:#6b7280">Change which repository this hostname edits in the ' +
+      'dashboard, under Sites.</span>';
   });
 
-  repo.sel.addEventListener("change", async () => {
-    targetRepo = repo.sel.value;
-    refreshSubmitState();
-    await loadBranches(targetRepo);
-  });
-
-  branch.sel.addEventListener("change", () => {
-    targetBranch = branch.sel.value;
-    refreshSubmitState();
-    branch.wrap.querySelector(`.${P}-branch-hint`)?.remove();
-    if (targetBranch) saveSiteSettings({ branch: targetBranch });
-  });
-
-  connectBtn.addEventListener("click", async () => {
-    const serviceUrl = resolveServiceUrl(stored.prServiceUrl);
-    connectBtn.textContent = "Opening GitHub…";
-    connectBtn.disabled = true;
-    resultEl.textContent = "";
-
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: "GITHUB_AUTH",
-        payload: { serviceUrl },
-      });
-      if (response.error) throw new Error(response.error);
-      await onConnected(response.token, serviceUrl);
-    } catch (err) {
-      connectBtn.disabled = false;
-      connectBtn.textContent = "Connect with GitHub →";
-      resultEl.innerHTML = `<span style="color:#dc2626">Auth failed: ${escHtml(err.message)}</span>`;
-    }
+  connectBtn.addEventListener("click", () => {
+    // No OAuth launch any more: the extension authenticates to us, and the
+    // token comes from the dashboard. The popup is where it is pasted,
+    // because a panel over someone's page is the wrong place for a
+    // credential field.
+    resultEl.innerHTML =
+      '<span style="color:#b45309">Open the extension popup and paste a token from the ' +
+      'dashboard (Your account → Browser extension).</span>';
+    chrome.runtime.sendMessage({ type: "OPEN_POPUP" }).catch(() => {});
   });
 
   // ── Auto-connect ─────────────────────────────────────────

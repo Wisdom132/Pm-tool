@@ -120,7 +120,10 @@ for (const permission of granted) {
 // ---- annotations must not be in a shipped build --------------------------
 for (const file of bundles) {
   const code = await readFile(resolve(DIST, file), 'utf8');
-  if (/data-edit-file="/.test(code)) {
+  // Not preceded by `[`: content.js legitimately builds the selector
+  // `[data-edit-file="…"]` to find an element by its source file. What must
+  // never ship is an annotation *stamped into markup*, which has no bracket.
+  if (/(^|[^[])data-edit-file="/.test(code)) {
     problems.push(`${file} contains literal annotations`);
   }
 }

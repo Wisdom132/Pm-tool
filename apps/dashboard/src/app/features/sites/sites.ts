@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { TableModule } from 'primeng/table';
@@ -11,7 +11,8 @@ import { Tag } from 'primeng/tag';
 import { Skeleton } from 'primeng/skeleton';
 import { PageHeader, EmptyState, ErrorState } from '../../../design-system';
 import { createLoader } from '../../core/load-state';
-import { MOCK_SITES, SiteEnvironment } from '../../core/mock-data';
+import { SitesApi } from '../../core/api';
+import type { SiteEnvironment } from '../../core/api.types';
 import { RegisterSiteDialog } from './register-site-dialog';
 
 /**
@@ -34,7 +35,7 @@ import { RegisterSiteDialog } from './register-site-dialog';
       <div class="ds-surface">
         <ds-error-state
           title="Could not load your sites"
-          detail="The dashboard is up, but the request for this list failed."
+          [detail]="loader.error() ?? 'The request for this list failed.'"
           (retry)="reload()" />
       </div>
     } @else if (loader.state() === 'loading') {
@@ -70,7 +71,7 @@ import { RegisterSiteDialog } from './register-site-dialog';
             <th>Environment</th>
             <th>Repository</th>
             <th>Branch</th>
-            <th>Last edited</th>
+            <th>Registered</th>
             <th></th>
           </tr>
         </ng-template>
@@ -79,7 +80,7 @@ import { RegisterSiteDialog } from './register-site-dialog';
           <tr>
             <td>
               <span class="ds-cell-strong">{{ site.hostname }}</span>
-              @if (!site.verified) {
+              @if (!site.site.verifiedAt) {
                 <p-tag value="Unverified" severity="warn" [rounded]="true" styleClass="verify-tag" />
               }
             </td>
@@ -94,7 +95,7 @@ import { RegisterSiteDialog } from './register-site-dialog';
                 </span>
               }
             </td>
-            <td class="ds-cell-muted">{{ site.lastEditedAt ? (site.lastEditedAt | date: 'd MMM, HH:mm') : '—' }}</td>
+            <td class="ds-cell-muted">{{ site.createdAt | date: 'd MMM y' }}</td>
             <td class="row-actions">
               <p-button icon="pi pi-pencil" [text]="true" [rounded]="true" severity="secondary" size="small"
                 ariaLabel="Edit site" [routerLink]="['/sites', site.id]" />
@@ -148,14 +149,14 @@ export class Sites {
   protected readonly query = signal('');
   private readonly sites = this.loader.data;
 
+  private readonly api = inject(SitesApi);
+
   constructor() {
     this.reload();
   }
 
-  /** `?state=error` and `?state=loading` make both reviewable on demand. */
   protected reload() {
-    const q = new URLSearchParams(location.search).get('state');
-    this.loader.load(MOCK_SITES, { fail: q === 'error', delay: q === 'loading' ? 60_000 : 650 });
+    this.loader.load(this.api.list());
   }
 
   protected readonly filtered = computed(() => {

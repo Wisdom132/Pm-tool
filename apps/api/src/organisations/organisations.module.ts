@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { MembershipsRepository } from './memberships.repository';
+import { OrganisationsRepository } from './organisations.repository';
+import { OrganisationsService } from './organisations.service';
+import { OrganisationsController } from './organisations.controller';
 import { OrgGuard } from './org-context';
 
 /**
@@ -12,7 +15,8 @@ import { OrgGuard } from './org-context';
  * than a runtime one.
  */
 @Module({
-  providers: [MembershipsRepository, OrgGuard],
+  controllers: [OrganisationsController],
+  providers: [MembershipsRepository, OrganisationsRepository, OrganisationsService, OrgGuard],
   exports: [MembershipsRepository, OrgGuard],
 })
 export class OrganisationsModule {}

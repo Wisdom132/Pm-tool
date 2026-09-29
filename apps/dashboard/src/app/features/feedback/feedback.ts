@@ -1,11 +1,16 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { SelectButton } from 'primeng/selectbutton';
 import { FormsModule } from '@angular/forms';
 import { Button } from 'primeng/button';
 import { Tag } from 'primeng/tag';
-import { PageHeader, EmptyState } from '../../../design-system';
-import { MOCK_FEEDBACK, FeedbackItem } from '../../core/mock-data';
+import { RouterLink } from '@angular/router';
+import { Skeleton } from 'primeng/skeleton';
+import { tap, map } from 'rxjs';
+import { PageHeader, EmptyState, ErrorState } from '../../../design-system';
+import { FeedbackApi } from '../../core/api';
+import { createLoader } from '../../core/load-state';
+import type { Feedback as FeedbackItem, FeedbackStatus } from '../../core/api.types';
 
 /**
  * Feedback inbox.
@@ -16,7 +21,7 @@ import { MOCK_FEEDBACK, FeedbackItem } from '../../core/mock-data';
  */
 @Component({
   selector: 'app-feedback',
-  imports: [DatePipe, FormsModule, SelectButton, Button, Tag, PageHeader, EmptyState],
+  imports: [DatePipe, FormsModule, RouterLink, SelectButton, Button, Tag, Skeleton, PageHeader, EmptyState, ErrorState],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <ds-page-header title="Feedback" subtitle="Comments left on your sites, pinned to the element they are about" />
@@ -24,19 +29,41 @@ import { MOCK_FEEDBACK, FeedbackItem } from '../../core/mock-data';
     <p-selectbutton
       [options]="filters"
       [ngModel]="filter()"
-      (ngModelChange)="filter.set($event)"
+      (ngModelChange)="onFilterChange($event)"
       optionLabel="label"
       optionValue="value"
       size="small"
       [allowEmpty]="false" />
 
-    @if (visible().length) {
+    @if (loader.state() === 'error') {
+      <div class="ds-surface">
+        <ds-error-state
+          title="Could not load feedback"
+          [detail]="loader.error() ?? 'The request for this list failed.'"
+          (retry)="reload()" />
+      </div>
+    } @else if (loader.state() === 'loading') {
       <div class="list">
-        @for (item of visible(); track item.id) {
+        @for (n of [1, 2, 3]; track n) {
+          <div class="ds-surface item">
+            <p-skeleton width="30%" height="0.9rem" />
+            <p-skeleton width="80%" height="1rem" />
+          </div>
+        }
+      </div>
+    } @else if (items().length) {
+      <div class="list">
+        @for (item of items(); track item.id) {
           <article class="ds-surface item">
             <header>
               <p-tag [value]="statusLabel(item.status)" [severity]="statusSeverity(item.status)" [rounded]="true" />
-              <span class="ds-cell-muted">{{ item.author }}</span>
+              <span class="ds-cell-muted">
+                {{ item.author.name || item.author.email || 'Anonymous' }}
+                @if (!item.author.verified && (item.author.name || item.author.email)) {
+                  <!-- A public submission names itself; that is not identity. -->
+                  <i class="pi pi-question-circle unverified" title="Self-reported — this person was not signed in"></i>
+                }
+              </span>
               <span class="dot">·</span>
               <span class="ds-cell-muted">{{ item.createdAt | date: 'd MMM, HH:mm' }}</span>
             </header>
@@ -49,12 +76,28 @@ import { MOCK_FEEDBACK, FeedbackItem } from '../../core/mock-data';
                 @if (item.sourceFile) {
                   <code>{{ item.sourceFile }}</code>
                 } @else {
-                  <span class="ds-cell-muted">{{ item.page }} · {{ item.element }} — source not resolved</span>
+                  <span class="ds-cell-muted">
+                    {{ item.pagePath }}{{ item.element ? ' · ' + item.element : '' }} — source not resolved
+                  </span>
                 }
               </span>
               <span class="actions">
-                <p-button label="Open editor" icon="pi pi-pencil" size="small" [text]="true" />
-                <p-button label="Create issue" icon="pi pi-github" size="small" [text]="true" severity="secondary" />
+                <p-button label="Open" icon="pi pi-arrow-right" iconPos="right" size="small" [text]="true" [routerLink]="['/feedback', item.id]" />
+                @if (item.status !== 'resolved') {
+                  <p-button
+                    label="Resolve"
+                    icon="pi pi-check"
+                    size="small"
+                    [text]="true"
+                    severity="secondary"
+                    [disabled]="busy() === item.id"
+                    (onClick)="setStatus(item, 'resolved')" />
+                }
+                @if (item.promotedUrl) {
+                  <a class="promoted" [href]="item.promotedUrl" target="_blank" rel="noopener">
+                    <i class="pi pi-external-link"></i> Filed
+                  </a>
+                }
               </span>
             </footer>
           </article>
@@ -83,28 +126,69 @@ import { MOCK_FEEDBACK, FeedbackItem } from '../../core/mock-data';
     .where code { font-size: var(--ds-t-caption); color: var(--p-primary-color); }
     .ds-cell-muted { font-size: var(--ds-t-caption); color: var(--p-text-muted-color); }
     .dot { color: var(--p-text-muted-color); }
+    .unverified { font-size: 11px; opacity: 0.7; }
+    .promoted { display: inline-flex; align-items: center; gap: 4px; font-size: var(--ds-t-caption); color: var(--p-primary-color); }
   `,
 })
 export class Feedback {
+  private readonly api = inject(FeedbackApi);
+
   protected readonly filters = [
     { label: 'All', value: 'all' },
     { label: 'New', value: 'new' },
     { label: 'Triaged', value: 'triaged' },
     { label: 'Resolved', value: 'resolved' },
   ];
-  protected readonly filter = signal<'all' | FeedbackItem['status']>('all');
-  private readonly items = signal<FeedbackItem[]>(MOCK_FEEDBACK);
+  protected readonly filter = signal<'all' | FeedbackStatus>('all');
+  protected readonly loader = createLoader<FeedbackItem[]>([]);
+  protected readonly items = this.loader.data;
+  protected readonly counts = signal<Record<string, number>>({});
+  protected readonly busy = signal<string | null>(null);
 
-  protected readonly visible = computed(() => {
-    const f = this.filter();
-    return f === 'all' ? this.items() : this.items().filter((i) => i.status === f);
-  });
+  constructor() {
+    this.reload();
+  }
 
-  protected statusLabel(s: FeedbackItem['status']) {
+  /**
+   * Filtering re-queries rather than narrowing what is already loaded.
+   *
+   * The list is paginated, so a client-side filter would only ever filter
+   * the first page — which looks like "no resolved feedback" when there is
+   * plenty, just not in the newest 25.
+   */
+  protected reload() {
+    const filter = this.filter();
+    this.loader.load(
+      this.api
+        .list({ status: filter === 'all' ? undefined : filter })
+        .pipe(
+          tap((page) => this.counts.set(page.counts)),
+          map((page) => page.items),
+        ),
+    );
+  }
+
+  protected onFilterChange(value: 'all' | FeedbackStatus) {
+    this.filter.set(value);
+    this.reload();
+  }
+
+  protected setStatus(item: FeedbackItem, status: FeedbackStatus) {
+    this.busy.set(item.id);
+    this.api.setStatus(item.id, status).subscribe({
+      next: () => {
+        this.busy.set(null);
+        this.reload();
+      },
+      error: () => this.busy.set(null),
+    });
+  }
+
+  protected statusLabel(s: FeedbackStatus) {
     return s === 'new' ? 'New' : s === 'triaged' ? 'Triaged' : 'Resolved';
   }
 
-  protected statusSeverity(s: FeedbackItem['status']) {
+  protected statusSeverity(s: FeedbackStatus) {
     return s === 'new' ? 'info' : s === 'triaged' ? 'warn' : 'success';
   }
 }

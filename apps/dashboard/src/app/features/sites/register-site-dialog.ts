@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, model, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, model, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Dialog } from 'primeng/dialog';
 import { Button } from 'primeng/button';
@@ -7,7 +7,8 @@ import { Select } from 'primeng/select';
 import { Message } from 'primeng/message';
 import { SelectButton } from 'primeng/selectbutton';
 import { RadioButton } from 'primeng/radiobutton';
-import { MOCK_CONNECTIONS } from '../../core/mock-data';
+import { ConnectionsApi, SitesApi } from '../../core/api';
+import type { Connection, EnvironmentLabel } from '../../core/api.types';
 
 type Framework = 'nuxt' | 'vue' | 'react' | 'next' | 'svelte' | 'angular';
 
@@ -83,8 +84,9 @@ type Framework = 'nuxt' | 'vue' | 'react' | 'next' | 'svelte' | 'angular';
             <label for="connection">Connection</label>
             <p-select
               id="connection"
-              [options]="connections"
-              [(ngModel)]="connectionId"
+              [options]="connections()"
+              [ngModel]="connectionId"
+              (ngModelChange)="onConnectionChange($event)"
               optionLabel="label"
               optionValue="value"
               placeholder="Choose a provider account"
@@ -95,8 +97,10 @@ type Framework = 'nuxt' | 'vue' | 'react' | 'next' | 'svelte' | 'angular';
             <label for="repo">Repository</label>
             <p-select
               id="repo"
-              [options]="repositories"
-              [(ngModel)]="repository"
+              [options]="repositories()"
+              [loading]="loadingRepos()"
+              [ngModel]="repository"
+              (ngModelChange)="onRepositoryChange($event)"
               placeholder="Choose a repository"
               [filter]="true"
               [fluid]="true" />
@@ -115,7 +119,8 @@ type Framework = 'nuxt' | 'vue' | 'react' | 'next' | 'svelte' | 'angular';
 
               @if (branchMode() === 'fixed') {
                 <p-select
-                  [options]="branches"
+                  [options]="branches()"
+                  [loading]="loadingBranches()"
                   [(ngModel)]="branch"
                   placeholder="Choose a branch"
                   [fluid]="true"
@@ -149,7 +154,7 @@ type Framework = 'nuxt' | 'vue' | 'react' | 'next' | 'svelte' | 'angular';
           <div class="field">
             <label>DNS record</label>
             <div class="snippet">
-              <code>TXT  _inline-edit.{{ hostname || 'acme.com' }}  {{ token }}</code>
+              <code>TXT  _inline-edit.{{ hostname || 'acme.com' }}  {{ 'shown on the site page once registered' }}</code>
               <p-button icon="pi pi-copy" [text]="true" severity="secondary" size="small" ariaLabel="Copy" />
             </div>
           </div>
@@ -159,10 +164,14 @@ type Framework = 'nuxt' | 'vue' | 'react' | 'next' | 'svelte' | 'angular';
           <div class="field">
             <label>Meta tag in your &lt;head&gt;</label>
             <div class="snippet">
-              <code>&lt;meta name="inline-edit-verification" content="{{ token }}" /&gt;</code>
+              <code>&lt;meta name="inline-edit-verification" content="{{ 'shown on the site page once registered' }}" /&gt;</code>
               <p-button icon="pi pi-copy" [text]="true" severity="secondary" size="small" ariaLabel="Copy" />
             </div>
           </div>
+
+          @if (error()) {
+            <p-message severity="error" [closable]="false">{{ error() }}</p-message>
+          }
 
           @if (verifyFailed()) {
             <p-message severity="warn" [closable]="false">
@@ -219,7 +228,11 @@ type Framework = 'nuxt' | 'vue' | 'react' | 'next' | 'svelte' | 'angular';
         }
         @if (step() === 3) {
           <p-button label="Skip for now" [text]="true" severity="secondary" (onClick)="step.set(4)" />
-          <p-button label="Verify" icon="pi pi-check" (onClick)="verify()" />
+          <p-button
+            [label]="saving() ? 'Registering…' : 'Register site'"
+            icon="pi pi-check"
+            [disabled]="saving()"
+            (onClick)="register()" />
         } @else if (step() === 4) {
           <p-button label="Finish" icon="pi pi-check" (onClick)="finish()" />
         } @else {
@@ -264,6 +277,54 @@ export class RegisterSiteDialog {
   readonly visible = model(false);
   readonly registered = output<void>();
 
+  constructor() {
+    // On open, not on construction: a provider connected in another tab
+    // should appear without a page reload.
+    effect(() => {
+      if (!this.visible()) return;
+      this.connectionsApi.list().subscribe({
+        next: (list) => this.liveConnections.set(list.filter((c) => !c.revokedAt)),
+      });
+    });
+  }
+
+  /**
+   * Repositories come from the chosen connection, and branches from the
+   * chosen repository — so neither can be typed freehand into a site that
+   * then fails on the first edit.
+   */
+  protected onConnectionChange(id: string | null) {
+    this.connectionId = id;
+    this.repository = null;
+    this.branch = null;
+    this.repositories.set([]);
+    this.branches.set([]);
+    if (!id) return;
+
+    this.loadingRepos.set(true);
+    this.connectionsApi.repositories(id).subscribe({
+      next: (repos) => {
+        this.repositories.set(repos.map((r) => r.fullName));
+        this.loadingRepos.set(false);
+      },
+      error: (err: Error) => {
+        this.loadingRepos.set(false);
+        this.error.set(err.message);
+      },
+    });
+  }
+
+  /**
+   * Branch options need a site to read them from, and there is none yet —
+   * `/editing/branches` takes an environmentId. So the list stays empty and
+   * the field accepts what the person types, which is also what makes a
+   * brand-new branch nameable.
+   */
+  protected onRepositoryChange(repository: string | null) {
+    this.repository = repository;
+    this.branch = null;
+  }
+
   protected readonly step = signal(1);
   protected hostname = '';
   protected name = '';
@@ -275,7 +336,16 @@ export class RegisterSiteDialog {
   protected readonly verifyFailed = signal(false);
   protected readonly framework = signal<Framework>('nuxt');
 
-  protected readonly token = 'ie-verify-7f3a9c21d4e8';
+  private readonly sitesApi = inject(SitesApi);
+  private readonly connectionsApi = inject(ConnectionsApi);
+
+  protected readonly saving = signal(false);
+  protected readonly error = signal('');
+  protected readonly loadingRepos = signal(false);
+  protected readonly loadingBranches = signal(false);
+  protected readonly repositories = signal<string[]>([]);
+  protected readonly branches = signal<string[]>([]);
+  private readonly liveConnections = signal<Connection[]>([]);
 
   protected readonly environments = [
     { label: 'Production', value: 'production' },
@@ -283,13 +353,12 @@ export class RegisterSiteDialog {
     { label: 'Preview', value: 'preview' },
   ];
 
-  protected readonly connections = MOCK_CONNECTIONS.map((c) => ({
-    label: `${c.accountLogin} · ${c.provider}`,
-    value: c.id,
-  }));
-
-  protected readonly repositories = ['iFrontida/website-revamp', 'iFrontida/docs', 'iFrontida/app'];
-  protected readonly branches = ['main', 'develop', 'staging'];
+  protected readonly connections = computed(() =>
+    this.liveConnections().map((c) => ({
+      label: `${c.accountLogin} · ${c.provider}`,
+      value: c.id,
+    })),
+  );
 
   protected readonly frameworks = [
     { label: 'Nuxt', value: 'nuxt' },
@@ -348,18 +417,51 @@ export class RegisterSiteDialog {
     return true;
   }
 
-  protected verify() {
-    // Mock: a real check queries DNS and fetches the page.
-    this.verifyFailed.set(true);
+  /**
+   * Create the site.
+   *
+   * Ownership verification is *not* performed here — nothing checks the DNS
+   * record or the meta tag yet (P2.5). The step exists because the token has
+   * to be shown somewhere, and skipping it is allowed, which is what the
+   * copy on that step says.
+   */
+  protected register() {
+    this.saving.set(true);
+    this.error.set('');
+
+    this.sitesApi
+      .create({
+        name: this.name.trim() || this.hostname.trim(),
+        hostname: this.hostname.trim(),
+        label: this.environment,
+        repository: this.repository!,
+        branch: this.branchMode() === 'page' ? null : this.branch,
+        connectionId: this.connectionId!,
+      })
+      .subscribe({
+        next: (site) => {
+          this.saving.set(false);
+          this.registered.emit();
+          // Straight to the last step: the plugin snippet is the thing they
+          // still have to act on, and it does not depend on the response.
+          this.step.set(4);
+        },
+        error: (err: Error) => {
+          this.saving.set(false);
+          this.error.set(err.message);
+        },
+      });
   }
 
   protected finish() {
-    this.registered.emit();
     this.visible.set(false);
   }
 
   protected reset() {
     this.step.set(1);
+    this.error.set('');
+    this.repositories.set([]);
+    this.branches.set([]);
     this.hostname = '';
     this.name = '';
     this.connectionId = null;

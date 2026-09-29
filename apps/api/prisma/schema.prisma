@@ -35,6 +35,7 @@ model Organisation {
   environments SiteEnvironment[]
   teams        Team[]
   auditEvents  AuditEvent[]
+  feedback     Feedback[]
 
   @@map("organisation")
 }
@@ -53,6 +54,8 @@ model User {
   sessions           Session[]
   createdConnections Connection[]  @relation("ConnectionCreatedBy")
   auditEvents        AuditEvent[]
+  authoredFeedback   Feedback[]    @relation("FeedbackAuthor")
+  resolvedFeedback   Feedback[]    @relation("FeedbackResolver")
 
   @@map("app_user")
 }
@@ -163,6 +166,7 @@ model Site {
   organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   environments SiteEnvironment[]
   teams        TeamSite[]
+  feedback     Feedback[]
 
   @@index([organisationId])
   @@map("site")
@@ -196,6 +200,8 @@ model SiteEnvironment {
   /// Restrict, not cascade: disconnecting a provider that sites still
   /// depend on should fail loudly rather than silently orphan them.
   connection   Connection   @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+
+  feedback Feedback[]
 
   @@unique([organisationId, hostname])
   @@index([hostname])
@@ -317,4 +323,64 @@ model AuditEvent {
 
   @@index([organisationId, createdAt(sort: Desc)])
   @@map("audit_event")
+}
+
+enum FeedbackStatus {
+  new
+  triaged
+  resolved
+}
+
+/// A comment left on a page by someone who will never open the repository.
+///
+/// Distinct from an issue or a pull request: the author may not have an
+/// account at all. What makes it worth more than a general feedback tool is
+/// `sourceFile` — where the page is annotated, the comment is pinned to the
+/// line that produced the element, which is the same link the editor uses.
+model Feedback {
+  id             String  @id @default(uuid()) @db.Uuid
+  organisationId String  @map("organisation_id") @db.Uuid
+  siteId         String  @map("site_id") @db.Uuid
+  /// Which environment it came from, when the hostname resolved to one.
+  environmentId  String? @map("environment_id") @db.Uuid
+
+  message  String
+  /// Full URL as seen, and the path alone for grouping.
+  pageUrl  String @map("page_url")
+  pagePath String @map("page_path")
+
+  /// A CSS selector for the element, for re-finding it on the page.
+  element    String?
+  /// Set when the page carried a build annotation. The differentiator.
+  sourceFile String? @map("source_file")
+  sourceLine Int?    @map("source_line")
+
+  /// Free text: a public widget has no account to attribute to. Null for
+  /// an anonymous submission.
+  authorName   String? @map("author_name")
+  authorEmail  String? @map("author_email")
+  /// Set only when the author was signed in — the extension path.
+  authorUserId String? @map("author_user_id") @db.Uuid
+
+  /// Context nobody types. P3.3.
+  viewport  String?
+  userAgent String? @map("user_agent")
+
+  status       FeedbackStatus @default(new)
+  resolvedById String?        @map("resolved_by_id") @db.Uuid
+  resolvedAt   DateTime?      @map("resolved_at")
+  /// Set once promoted into an issue or change request.
+  promotedUrl  String?        @map("promoted_url")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organisation Organisation     @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  site         Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  environment  SiteEnvironment? @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  authorUser   User?            @relation("FeedbackAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  resolvedBy   User?            @relation("FeedbackResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([organisationId, status, createdAt(sort: Desc)])
+  @@index([siteId])
+  @@map("feedback")
 }

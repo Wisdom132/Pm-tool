@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, UnprocessableEntityException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { SitesService } from '../sites/sites.service';
+import { AuditRepository } from '../audit/audit.repository';
 import { ProvidersService } from '../providers/providers.service';
 import { ProviderError, type RepositoryProvider } from '../providers/provider.types';
 import { I18nService, type I18nEdit } from './i18n.service';
@@ -42,6 +43,7 @@ export class EditingService {
     private readonly providers: ProvidersService,
     private readonly i18n: I18nService,
     private readonly locator: LocateService,
+    private readonly audit: AuditRepository,
   ) {}
 
   // ── reads ──────────────────────────────────────────────────────
@@ -121,6 +123,14 @@ export class EditingService {
         pageUrl: dto.pageUrl,
         note: dto.note,
       }),
+    });
+
+    await this.audit.record({
+      organisationId: environment.organisationId,
+      actorUserId: userId,
+      action: 'issue.opened',
+      subject: `${provider.fullName} #${issue.number}`,
+      detail: { url: issue.url, hostname: environment.hostname, edits: dto.edits.length },
     });
 
     this.logger.log(
@@ -261,6 +271,24 @@ export class EditingService {
       }),
       head: branchName,
       base: baseBranch,
+    });
+
+    // Standalone rather than in a transaction: the change request already
+    // exists on the provider's side, so failing to record it must not undo
+    // anything — and an unrecorded pull request is better than a lost one.
+    await this.audit.record({
+      organisationId: environment.organisationId,
+      actorUserId: userId,
+      action: 'pr.opened',
+      subject: `${provider.fullName} #${change.number}`,
+      detail: {
+        url: change.url,
+        hostname: environment.hostname,
+        branch: branchName,
+        base: baseBranch,
+        applied: applied.length,
+        skipped: skipped.length,
+      },
     });
 
     this.logger.log(
