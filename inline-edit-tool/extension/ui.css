@@ -1918,3 +1918,136 @@
 .__iet-toolcard[data-side='left']:not([hidden]) ~ #__iet-toast {
   bottom: 268px;
 }
+
+/* ── Accessibility audit card ─────────────────────────────── */
+#__iet-a11y {
+  position: fixed;
+  z-index: 2147483645;
+  width: 300px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--iet-surface-solid);
+  border: 1px solid var(--iet-line);
+  color: var(--iet-text);
+  box-shadow: var(--iet-shadow);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  display: grid;
+  gap: 8px;
+}
+
+.__iet-a11y-title {
+  font: 600 12px/1.4 ui-monospace, Menlo, monospace;
+  color: var(--iet-muted);
+}
+
+.__iet-a11y-row {
+  display: grid;
+  grid-template-columns: 18px auto 1fr;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.__iet-a11y-row strong { font-weight: 600; white-space: nowrap; }
+
+.__iet-a11y-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.__iet-a11y-row[data-kind='pass'] .__iet-a11y-badge { background: var(--iet-done); }
+.__iet-a11y-row[data-kind='fail'] .__iet-a11y-badge { background: var(--iet-danger); }
+.__iet-a11y-row[data-kind='warn'] .__iet-a11y-badge { background: var(--iet-warn); }
+.__iet-a11y-row[data-kind='info'] .__iet-a11y-badge { background: var(--iet-dim); }
+
+.__iet-a11y-detail {
+  color: var(--iet-muted);
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.__iet-a11y-source {
+  padding-top: 8px;
+  border-top: 1px solid var(--iet-line);
+  font: 500 11px/1.4 ui-monospace, Menlo, monospace;
+  color: var(--iet-accent);
+  overflow-wrap: anywhere;
+}
+
+/* ── Search panel ─────────────────────────────────────────── */
+#__iet-search {
+  position: fixed;
+  top: 20px;
+  left: 76px;
+  z-index: 2147483646;
+  width: 300px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--iet-surface-solid);
+  border: 1px solid var(--iet-line);
+  box-shadow: var(--iet-shadow);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  align-items: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+#__iet-search[data-side='right'] {
+  left: auto;
+  right: 76px;
+}
+
+.__iet-search-input {
+  grid-column: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--iet-line);
+  border-radius: 6px;
+  background: var(--iet-raised);
+  color: var(--iet-text);
+  font-size: 13px;
+}
+
+.__iet-search-input:focus {
+  outline: 0;
+  border-color: var(--iet-accent);
+}
+
+.__iet-search-count {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--iet-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.__iet-search-source {
+  grid-column: 1 / -1;
+  font: 500 11px/1.4 ui-monospace, Menlo, monospace;
+  color: var(--iet-accent);
+  min-height: 0;
+  overflow-wrap: anywhere;
+}
+
+.__iet-search-source[data-unmapped='true'] { color: var(--iet-warn); }
+.__iet-search-source:empty { display: none; }
+
+.__iet-search-hint {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  color: var(--iet-dim);
+}
+
+.__iet-toolcard-again {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--iet-line);
+  font-size: 10px;
+  color: var(--iet-dim);
+}

@@ -43,6 +43,17 @@ export const CARDS = {
       ["Clear", "esc"],
     ],
   },
+  a11y: {
+    title: "Accessibility",
+    key: "A",
+    intro: "Contrast ratios and screen-reader checks, on anything.",
+    rows: [
+      ["Peek", "hover"],
+      ["Audit", "click"],
+      ["Report a finding", "switch to Comment (c)"],
+      ["Open the source editor", `${ALT} click`],
+    ],
+  },
   edit: {
     title: "Edit text",
     key: "E",
@@ -71,6 +82,7 @@ export const CARDS = {
     intro: "Move, duplicate or delete any element.",
     rows: [
       ["Pick", "click anything"],
+      ["Nudge", "↑ ↓"],
       ["Move, duplicate, delete", "buttons in the bar"],
       ["Open the source editor", `${ALT} click`],
       ["Put it back", `${META} Z`],
@@ -132,7 +144,14 @@ export function createToolCard() {
         table.append(dt, dd);
       }
 
-      card.append(head, intro, table);
+      // How to get the card back once it has got out of the way — VisBug
+      // calls this the trainer, and one line here is what makes the
+      // dismissal safe to do.
+      const again = document.createElement("p");
+      again.className = `${P}-toolcard-again`;
+      again.textContent = "shift + /  shows this again";
+
+      card.append(head, intro, table, again);
       card.hidden = false;
     },
 

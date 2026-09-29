@@ -16,6 +16,7 @@ const P = "__iet";
 /** Modes. Selecting one deselects the others. */
 export const TOOL = {
   INSPECT: "inspect",
+  A11Y: "a11y",
   EDIT: "edit",
   PROPERTIES: "properties",
   STRUCTURE: "structure",
@@ -24,6 +25,12 @@ export const TOOL = {
 
 const TOOLS = [
   { id: TOOL.INSPECT, icon: "inspect", label: "Inspect", hint: "See where anything comes from" },
+  {
+    id: TOOL.A11Y,
+    icon: "a11y",
+    label: "Accessibility",
+    hint: "Contrast and screen-reader checks",
+  },
   { id: TOOL.EDIT, icon: "edit", label: "Edit text", hint: "Click any text to rewrite it" },
   {
     id: TOOL.PROPERTIES,
@@ -68,6 +75,7 @@ const TOGGLES = [
 ];
 
 const ACTIONS = [
+  { id: "search", icon: "search", label: "Search the page", shortcut: "S" },
   { id: "undo", icon: "undo", label: "Undo", shortcut: "⌘Z" },
   { id: "redo", icon: "redo", label: "Redo", shortcut: "⇧⌘Z" },
   { id: "changes", icon: "changes", label: "Changes", counted: true },

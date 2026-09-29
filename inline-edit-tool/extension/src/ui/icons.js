@@ -91,6 +91,15 @@ const SHAPES = {
   ],
 
   close: [["path", { d: "M18 6L6 18M6 6l12 12" }]],
+  // The classic accessibility figure: head, arms out, legs.
+  a11y: [
+    ["circle", { cx: "12", cy: "5", r: "2" }],
+    ["path", { d: "M4 9h16M12 9v6M12 15l-4 5M12 15l4 5" }],
+  ],
+  search: [
+    ["circle", { cx: "11", cy: "11", r: "7" }],
+    ["path", { d: "M21 21l-4.5-4.5" }],
+  ],
 };
 
 /**

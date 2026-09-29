@@ -754,6 +754,41 @@ only offers attributes already present in source, which is the codemod's
 actual contract; a disabled struct button cannot fire even
 programmatically.
 
+### VisBug parity, second round — four features
+
+- **Accessibility tool** (`a`) — VisBug's second tool, now ours: click
+  anything for contrast ratio with the AA/AAA verdict (WCAG's own
+  constants, alpha composited before measuring — translucent text really
+  is greyer than its colour says), screen-reader name checks (the
+  icon-button trap, missing alt, links going nowhere), and the traps
+  (`aria-hidden`, positive tabindex). Every finding names its source file,
+  and the card points at Comment — a contrast failure is rarely a
+  one-element fix, so the tool describes and the comment carries.
+  Contrast maths is pure with the WebAIM boundary cases pinned; 4.4949
+  displays as 4.49 and does not round its way into a pass.
+- **Search** (`s`) — selector or text, walking with Enter, ⌘Enter hands
+  the match to the active tool. Each match shows its source file, which a
+  generic design tool has no way to know. Two of its bugs were caught by
+  the tests before shipping: "sign up" parses as a *valid, empty* CSS
+  selector (`Sign` descendant `up`), so parse-success was the wrong branch
+  point and made text search unreachable for exactly what people type;
+  and pick-on-plain-Enter made every match past the first unreachable by
+  keyboard.
+- **Nudge keys** — with an element picked in Rearrange, ↑↓ move it. The
+  third move in a row is where buttons get tedious.
+- **The trainer** (`shift+/`) — re-summons the gesture card, and every
+  card now says so in its footer, which is what makes dismissing it safe.
+
+One product bug found by its own e2e: the capture-phase shortcut handler
+opened search and focused the input before the browser's default action
+ran — so every search began with a stray "s" typed into it.
+
+Deliberately not taken from VisBug: the margin/padding/flex/hue/shadow/
+font sandboxes. Ours is not a sandbox — every change must survive to a
+pull request, and there is no honest codemod for "nudged this margin
+until it looked right". The class editor is the door for styling changes,
+because classes are what the source actually says.
+
 ### Still open on the tool
 
 - [ ] Structure ops still require a build annotation (`recordStructuralEdit`
@@ -762,9 +797,6 @@ programmatically.
       Locate flow that Edit falls back to could serve here too.
 - [ ] The measurement pin is Inspect-only. VisBug also measures pinned↔pinned
       with shift-click multi-select; ours is one pin, one hover.
-- [ ] The gesture cards are static text. VisBug's "Trainer: shift+/" — a
-      re-summonable overlay — is a better recall mechanism than a card that
-      only appears on selection.
 
 ## P4 — Reporting integrations
 

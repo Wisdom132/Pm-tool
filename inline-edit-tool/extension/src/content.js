@@ -27,6 +27,8 @@ import { createRail, createToast, TOOL } from "./ui/rail.js";
 import { createLabelLayer, createInspectorCard } from "./ui/labels.js";
 import { createGuideLayer } from "./ui/guides.js";
 import { createToolCard } from "./ui/tool-card.js";
+import { createA11yCard } from "./ui/a11y.js";
+import { createSearchPanel } from "./ui/search.js";
 import { createPropertiesPanel } from "./ui/properties.js";
 import { createStructureBar } from "./ui/structure-bar.js";
 import { openSourcePanel, sourceRefFor } from "./ui/source-panel.js";
@@ -87,6 +89,8 @@ let activeTool = null;
 /** Inspect's pinned element — the fixed end of a measurement. */
 let pinnedEl = null;
 let toolCard = null;
+let a11yCard = null;
+let search = null;
 let autoDetectMode = false;
 let editableEls = [];
 let activeOverlay = null;
@@ -98,6 +102,7 @@ let panel = null;
 /** Tools that need the page decorated and click-interactive. */
 const INTERACTIVE_TOOLS = new Set([
   TOOL.INSPECT,
+  TOOL.A11Y,
   TOOL.EDIT,
   TOOL.PROPERTIES,
   TOOL.STRUCTURE,
@@ -127,6 +132,7 @@ const INTERACTIVE_TOOLS = new Set([
 const WHOLE_PAGE_TOOLS = new Set([
   TOOL.COMMENT,
   TOOL.INSPECT,
+  TOOL.A11Y,
   TOOL.PROPERTIES,
   TOOL.STRUCTURE,
 ]);
@@ -168,6 +174,12 @@ function buildUi() {
   inspector = createInspectorCard();
   guides = createGuideLayer();
   toolCard = createToolCard();
+  a11yCard = createA11yCard();
+  search = createSearchPanel({
+    onPick: (el) => activateOn(el),
+    onHighlight: highlightFromSearch,
+    isExcluded: isOwnUi,
+  });
   properties = createPropertiesPanel({
     root,
     onChange: recordAttributeEdit,
@@ -187,12 +199,15 @@ function buildUi() {
     labels.element,
     inspector.element,
     crumbsEl,
+    a11yCard.element,
+    search.element,
     toolCard.element,
     toast.element
   );
 
   rail.setSide("left");
   toolCard.setSide("left");
+  search.setSide("left");
   syncRail();
 }
 
@@ -201,6 +216,7 @@ async function restorePreferences() {
   const stored = await chrome.storage.sync.get([SIDE_STORAGE_KEY, GUIDES_STORAGE_KEY]);
   rail.setSide(stored[SIDE_STORAGE_KEY] || "left");
   toolCard.setSide(stored[SIDE_STORAGE_KEY] || "left");
+  search.setSide(stored[SIDE_STORAGE_KEY] || "left");
 
   // Guides are on unless explicitly turned off.
   const guidesOn = stored[GUIDES_STORAGE_KEY] !== false;
@@ -313,6 +329,7 @@ function flipSide() {
   const next = rail.side === "left" ? "right" : "left";
   rail.setSide(next);
   toolCard.setSide(next);
+  search.setSide(next);
   chrome.storage.sync.set({ [SIDE_STORAGE_KEY]: next });
   if (hoveredEl?.isConnected) labels.reposition(hoveredEl);
 }
@@ -353,6 +370,7 @@ function selectTool(toolId) {
   inspector.hide();
   properties.hide();
   structureBar.hide();
+  a11yCard.hide();
   labels.hide();
   guides.hide();
   hideCrumbs();
@@ -378,6 +396,9 @@ function selectTool(toolId) {
 
 function runAction(id) {
   switch (id) {
+    case "search":
+      search.toggle();
+      break;
     case "undo":
       undo();
       break;
@@ -437,6 +458,8 @@ function teardownInteraction() {
   guides.hide();
   inspector.hide();
   properties.hide();
+  a11yCard.hide();
+  search.close();
   structureBar.hide();
   sourcePanel?.close();
   hideCrumbs();
@@ -532,6 +555,26 @@ function onViewportChange() {
     guides.hide();
   }
   if (crumbsEl.hidden === false && hoveredEl) positionCrumbs(hoveredEl);
+}
+
+/**
+ * The search panel's live preview: the same visuals a hover gets, so a
+ * match looks exactly like what clicking it will act on.
+ */
+function highlightFromSearch(el) {
+  if (hoveredEl && hoveredEl !== el) {
+    hoveredEl.classList.remove(CLS.hovered, CLS.editable);
+  }
+  if (!el) {
+    labels.hide();
+    guides.hide();
+    hoveredEl = null;
+    return;
+  }
+  hoveredEl = el;
+  el.classList.add(CLS.hovered, CLS.editable);
+  labels.show(el, { state: "hover" });
+  guides.show(el, "hover");
 }
 
 // ---- Hover -------------------------------------------------
@@ -679,6 +722,7 @@ function onDocumentClick(e) {
   if (!el) {
     inspector.hide();
     properties.hide();
+    a11yCard.hide();
     return;
   }
   e.preventDefault();
@@ -706,6 +750,13 @@ function activateOn(el, event) {
     guides.show(el, "selected");
     return;
   }
+  if (activeTool === TOOL.A11Y) {
+    a11yCard.show(el);
+    labels.show(el, { state: "selected" });
+    guides.show(el, "selected");
+    return;
+  }
+
   if (activeTool === TOOL.EDIT) {
     beginEdit(el, event);
     return;
@@ -1423,6 +1474,14 @@ function onKeydown(e) {
 
   if (e.key === "Escape") {
     toolCard.hide();
+    if (search.visible) {
+      search.close();
+      return;
+    }
+    if (a11yCard.visible) {
+      a11yCard.hide();
+      return;
+    }
     if (inspector.visible) {
       inspector.hide();
       pinnedEl = null;
@@ -1447,12 +1506,50 @@ function onKeydown(e) {
 
   if (isTypingTarget(e)) return;
 
+  // The trainer: bring the gesture card back after it got out of the way.
+  // shift+/ lands as "?", matching VisBug's habit exactly.
+  if (e.key === "?" && INTERACTIVE_TOOLS.has(activeTool)) {
+    e.preventDefault();
+    toolCard.show(activeTool);
+    return;
+  }
+
+  // Nudge: with an element picked in Rearrange, the arrows move it. The
+  // buttons stay — the keys are for the third and fourth move in a row,
+  // where reaching for a button per step is what makes reordering tedious.
+  if (activeTool === TOOL.STRUCTURE && structureBar.visible && structureBar.target) {
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      recordStructuralEdit(e.key === "ArrowUp" ? "move-up" : "move-down", structureBar.target);
+      return;
+    }
+  }
+
   // Every tool has a key, because the hint cards advertise them — a card
   // that shows a shortcut badge for a key that does nothing teaches people
   // to stop believing the cards.
-  const toolFor = { i: TOOL.INSPECT, e: TOOL.EDIT, p: TOOL.PROPERTIES, r: TOOL.STRUCTURE, c: TOOL.COMMENT };
+  const toolFor = {
+    i: TOOL.INSPECT,
+    a: TOOL.A11Y,
+    e: TOOL.EDIT,
+    p: TOOL.PROPERTIES,
+    r: TOOL.STRUCTURE,
+    c: TOOL.COMMENT,
+  };
   const tool = toolFor[e.key?.toLowerCase?.()];
-  if (tool) rail.selectTool(activeTool === tool ? null : tool);
+  if (tool) {
+    rail.selectTool(activeTool === tool ? null : tool);
+    return;
+  }
+
+  if (e.key?.toLowerCase?.() === "s") {
+    // preventDefault, or the very keystroke that opened the panel types
+    // itself into the freshly-focused input — every search would begin
+    // with a stray "s". This handler runs on capture, so the default
+    // insertion has not happened yet.
+    e.preventDefault();
+    search.toggle();
+  }
 }
 
 // ============================================================

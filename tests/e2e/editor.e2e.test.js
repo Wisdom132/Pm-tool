@@ -671,6 +671,164 @@ describe('measurements', () => {
   });
 });
 
+describe('accessibility tool', () => {
+  beforeEach(async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'a11y' }));
+    await page.waitForTimeout(150);
+  });
+
+  const card = () =>
+    page.evaluate(() => {
+      const el = __IET_TEST__.root.querySelector('#__iet-a11y');
+      return {
+        hidden: el.hidden,
+        rows: [...el.querySelectorAll('.__iet-a11y-row')].map((r) => ({
+          kind: r.dataset.kind,
+          label: r.querySelector('strong').textContent,
+          detail: r.querySelector('.__iet-a11y-detail').textContent,
+        })),
+        source: el.querySelector('.__iet-a11y-source')?.textContent,
+      };
+    });
+
+  it('audits text with a real contrast ratio and a WCAG verdict', async () => {
+    await page.click(heroSelector);
+    await page.waitForTimeout(200);
+
+    const c = await card();
+    expect(c.hidden).toBe(false);
+
+    const contrast = c.rows.find((r) => r.label === 'Contrast');
+    // A real number from Chromium's computed styles — the one part no unit
+    // test can exercise, because it needs a browser that resolves colour
+    // inheritance for real.
+    expect(contrast.detail).toMatch(/^\d+(\.\d+)?:1 — (AA|AAA|below AA)/);
+  });
+
+  it('names the file the finding belongs to', async () => {
+    await page.click(heroSelector);
+    await page.waitForTimeout(200);
+    expect((await card()).source).toContain('index.jsx');
+  });
+
+  it('reports the alt text of an image', async () => {
+    await page.click('#logo');
+    await page.waitForTimeout(200);
+
+    const alt = (await card()).rows.find((r) => r.label === 'Alt text');
+    expect(alt).toBeTruthy();
+  });
+
+  it('fails a nameless icon-button', async () => {
+    await page.evaluate(() => {
+      const b = document.createElement('button');
+      b.id = 'icon-only';
+      document.querySelector('section.banner').appendChild(b);
+      b.click();
+    });
+    await page.waitForTimeout(200);
+
+    const name = (await card()).rows.find((r) => r.label === 'Name');
+    expect(name.kind).toBe('fail');
+  });
+});
+
+describe('search', () => {
+  const panel = () =>
+    page.evaluate(() => {
+      const el = __IET_TEST__.root.querySelector('#__iet-search');
+      return {
+        hidden: el.hidden,
+        count: el.querySelector('.__iet-search-count').textContent,
+        source: el.querySelector('.__iet-search-source').textContent,
+      };
+    });
+
+  it('opens with the s key and finds text with its source file', async () => {
+    await page.keyboard.press('s');
+    await page.waitForTimeout(150);
+    expect((await panel()).hidden).toBe(false);
+
+    await page.keyboard.type('Ship it');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+
+    const p = await panel();
+    expect(p.count).toBe('1 of 1');
+    // The part a generic design tool has no way to know.
+    expect(p.source).toContain('Banner.vue');
+  });
+
+  it('typing a query never switches tools', async () => {
+    // "e" is the Edit key. Typing it into the search field must stay a
+    // letter.
+    await page.keyboard.press('s');
+    await page.waitForTimeout(150);
+    await page.keyboard.type('deploys');
+    expect((await state()).tool).toBe('edit');
+
+    const value = await page.evaluate(
+      () => __IET_TEST__.root.querySelector('.__iet-search-input').value
+    );
+    expect(value).toBe('deploys');
+  });
+
+  it('cmd-enter hands the match to the active tool', async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'inspect' }));
+    await page.keyboard.press('s');
+    await page.waitForTimeout(150);
+    await page.keyboard.type('Ship it');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('ControlOrMeta+Enter');
+    await page.waitForTimeout(250);
+
+    const inspecting = await page.evaluate(
+      () => !__IET_TEST__.root.querySelector('#__iet-inspector').hidden
+    );
+    expect(inspecting).toBe(true);
+  });
+});
+
+describe('nudge keys', () => {
+  it('arrow keys move the picked element', async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'structure' }));
+    await page.waitForTimeout(150);
+    await page.click('li[data-edit-line="44"]');
+    await page.waitForTimeout(200);
+
+    const before = await page.evaluate(() => document.querySelector('#steps li').textContent);
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(250);
+
+    expect(await page.evaluate(() => document.querySelector('#steps li').textContent)).not.toBe(before);
+    expect((await state()).count).toBe(1);
+  });
+});
+
+describe('the trainer', () => {
+  it('shift+/ brings the gesture card back after it got out of the way', async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'inspect' }));
+    await page.waitForTimeout(100);
+    await page.click(heroSelector); // dismisses the card
+    await page.waitForTimeout(100);
+
+    const hiddenAfterClick = await page.evaluate(
+      () => __IET_TEST__.root.querySelector('.__iet-toolcard').hidden
+    );
+    expect(hiddenAfterClick).toBe(true);
+
+    await page.keyboard.press('?');
+    await page.waitForTimeout(100);
+
+    const c = await page.evaluate(() => {
+      const el = __IET_TEST__.root.querySelector('.__iet-toolcard');
+      return { hidden: el.hidden, text: el.textContent };
+    });
+    expect(c.hidden).toBe(false);
+    expect(c.text).toContain('Inspect');
+  });
+});
+
 describe('responsive preview', () => {
   const toggle = () =>
     page.evaluate(() => __IET_TEST__.root.querySelector('[data-id="responsive"]').click());
