@@ -11,7 +11,23 @@ export const routes: Routes = [
     children: [
       { path: 'sign-in', loadComponent: () => import('./features/auth/sign-in/sign-in').then((m) => m.SignIn) },
       { path: 'sign-in/check-email', loadComponent: () => import('./features/auth/check-email/check-email').then((m) => m.CheckEmail) },
-      { path: 'invite/:token', loadComponent: () => import('./features/auth/accept-invite/accept-invite').then((m) => m.AcceptInvite) },
+    ],
+  },
+  {
+    // The invitation page, on the auth layout but *without*
+    // `requireNoSession`. Both states are legitimate here: somebody with no
+    // account needs to be told what they are joining, and somebody already
+    // signed in is exactly who can accept it. Guarding it as
+    // "signed out only" bounced the second case to the overview, which is
+    // the one person the link was useful to.
+    path: '',
+    component: AuthLayout,
+    children: [
+      // `invitations/`, matching the path the API puts in the email. The
+      // old `invite/` is kept as a redirect because invitations live 14
+      // days, so links in the old shape may already be in an inbox.
+      { path: 'invitations/:token', loadComponent: () => import('./features/auth/accept-invite/accept-invite').then((m) => m.AcceptInvite) },
+      { path: 'invite/:token', redirectTo: 'invitations/:token' },
     ],
   },
   {

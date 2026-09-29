@@ -1,38 +1,103 @@
 <div class="auth-screen">
-  @switch (state()) {
-    @case ('valid') {
-      <span class="auth-icon"><i class="pi pi-users"></i></span>
-      <div class="auth-head">
-        <h1>Join {{ organisation }}</h1>
-        <p>
-          <strong>{{ invitedBy }}</strong> invited
-          <strong>{{ email }}</strong> as {{ role === 'admin' ? 'an admin' : 'an editor' }}.
-        </p>
-      </div>
+  @if (loading()) {
+    <span class="auth-icon"><i class="pi pi-users"></i></span>
+    <div class="auth-head">
+      <p-skeleton width="14rem" height="1.6rem" />
+      <p-skeleton width="18rem" height="1rem" styleClass="mt" />
+    </div>
+  } @else if (!offer()) {
+    <span class="auth-icon warn"><i class="pi pi-times-circle"></i></span>
+    <div class="auth-head">
+      <h1>This link is not valid</h1>
+      <p>{{ error() || 'Ask whoever invited you to send another.' }}</p>
+    </div>
+  } @else if (offer(); as invitation) {
+    @switch (invitation.status) {
+      @case ('pending') {
+        <span class="auth-icon"><i class="pi pi-users"></i></span>
+        <div class="auth-head">
+          <h1>Join {{ invitation.organisation.name }}</h1>
+          <p>
+            <strong>{{ invitation.email }}</strong> was invited as
+            {{ invitation.role === 'admin' ? 'an admin' : 'an editor' }}.
+          </p>
+        </div>
 
-      <ul class="can">
-        <li><i class="pi pi-check"></i> Edit copy on the sites your teams cover</li>
-        <li><i class="pi pi-check"></i> Open pull requests and leave feedback</li>
-        @if (role === 'admin') {
-          <li><i class="pi pi-check"></i> Connect providers, register sites, invite people</li>
-        } @else {
-          <li class="cannot"><i class="pi pi-times"></i> Cannot change where a site points</li>
+        <ul class="can">
+          <li><i class="pi pi-check"></i> Edit copy on the sites your teams cover</li>
+          <li><i class="pi pi-check"></i> Open pull requests and leave feedback</li>
+          @if (invitation.role === 'admin') {
+            <li><i class="pi pi-check"></i> Connect providers, register sites, invite people</li>
+          } @else {
+            <li class="cannot"><i class="pi pi-times"></i> Cannot change where a site points</li>
+          }
+        </ul>
+
+        @if (error()) {
+          <p-message severity="error" [closable]="false">{{ error() }}</p-message>
         }
-      </ul>
 
-      <p-button label="Accept invitation" [fluid]="true" [loading]="accepting()" (onClick)="accept()" />
-      <p class="auth-meta">Not you? Ignore this email and nothing happens.</p>
-    }
+        @if (matches()) {
+          <!-- Signed in as the invited person: the only case with an Accept. -->
+          <p-button
+            [label]="busy() ? 'Joining…' : 'Accept invitation'"
+            [fluid]="true"
+            [loading]="busy()"
+            (onClick)="accept()" />
+          <p class="auth-meta">You are signed in as {{ signedInAs() }}.</p>
+        } @else if (signedInAs()) {
+          <!-- Signed in as somebody else. Accepting for the wrong account
+               would make the address on the invitation meaningless. -->
+          <p-message severity="warn" [closable]="false">
+            You are signed in as <strong>{{ signedInAs() }}</strong>, but this
+            invitation was sent to <strong>{{ invitation.email }}</strong>.
+          </p-message>
+          <p-button label="Sign out and switch account" [fluid]="true" [outlined]="true" (onClick)="signOut()" />
+        } @else if (linkSent()) {
+          <p-message severity="success" [closable]="false">
+            A sign-in link is on its way to <strong>{{ invitation.email }}</strong>.
+            Open it and you will join automatically.
+          </p-message>
+        } @else {
+          <p-button
+            [label]="busy() ? 'Sending…' : 'Email me a sign-in link'"
+            [fluid]="true"
+            [loading]="busy()"
+            (onClick)="requestLink()" />
+          <p class="auth-meta">
+            We will send it to {{ invitation.email }} — the address this
+            invitation was sent to, so only that inbox can accept it.
+          </p>
+        }
+      }
 
-    @case ('expired') {
-      <span class="auth-icon warn"><i class="pi pi-clock"></i></span>
-      <div class="auth-head">
-        <h1>This invitation expired</h1>
-        <p>
-          Invitations last 7 days. Ask {{ invitedBy }} to send another — it
-          takes them a moment.
-        </p>
-      </div>
+      @case ('expired') {
+        <span class="auth-icon warn"><i class="pi pi-clock"></i></span>
+        <div class="auth-head">
+          <h1>This invitation expired</h1>
+          <p>
+            Invitations last 14 days. Ask an admin at
+            {{ invitation.organisation.name }} to send another — it takes them
+            a moment.
+          </p>
+        </div>
+      }
+
+      @case ('accepted') {
+        <span class="auth-icon"><i class="pi pi-check-circle"></i></span>
+        <div class="auth-head">
+          <h1>Already accepted</h1>
+          <p>
+            <strong>{{ invitation.email }}</strong> is already a member of
+            {{ invitation.organisation.name }}.
+          </p>
+        </div>
+        @if (matches()) {
+          <p-button label="Go to the dashboard" [fluid]="true" [routerLink]="['/overview']" />
+        } @else {
+          <p class="auth-meta">Sign in as {{ invitation.email }} to continue.</p>
+        }
+      }
     }
   }
 </div>

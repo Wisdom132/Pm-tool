@@ -45,6 +45,20 @@ export interface ExtensionToken {
   expiresAt: string;
 }
 
+/**
+ * What an invitation link is offering.
+ *
+ * Deliberately thin — a guessed token should not be worth having, so this
+ * carries no member list and no site list.
+ */
+export interface InvitationOffer {
+  status: 'pending' | 'expired' | 'accepted';
+  email: string;
+  role: Role;
+  expiresAt: string;
+  organisation: { id: string; name: string };
+}
+
 // ── organisation ─────────────────────────────────────────────────
 
 export interface Organisation {

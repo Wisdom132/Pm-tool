@@ -3,6 +3,7 @@ import { Observable } from 'rxjs';
 import { ApiClient } from '../api-client';
 import type {
   ExtensionToken,
+  InvitationOffer,
   Me,
 } from '../api-types';
 
@@ -12,6 +13,16 @@ export class AuthApi {
 
   me(): Observable<Me> {
     return this.api.get<Me>('/auth/me');
+  }
+
+  /** What an invitation link offers. Public — the holder may have no account. */
+  invitation(token: string): Observable<InvitationOffer> {
+    return this.api.get<InvitationOffer>(`/auth/invitations/${token}`);
+  }
+
+  /** Accept it as whoever is signed in. The addresses must match. */
+  acceptInvitation(token: string): Observable<{ organisationId: string; alreadyAccepted: boolean }> {
+    return this.api.post(`/auth/invitations/${token}/accept`);
   }
 
   requestLink(email: string): Observable<{ sent: boolean }> {
