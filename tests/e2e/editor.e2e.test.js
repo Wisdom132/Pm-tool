@@ -434,7 +434,22 @@ describe('opening the toolbar', () => {
     expect((await state()).tool).toBe('inspect');
   });
 
-  it('decorates the page straight away', async () => {
+  it('paints whatever is hovered — inspect targets anything', async () => {
+    // This used to assert the page was pre-decorated. Inspect is a
+    // whole-page tool now: nothing is marked in advance because *everything*
+    // is a target, and pre-marking only the text-bearing elements would say
+    // the opposite. What must be true instead is that the first hover
+    // paints, immediately, with no click first.
+    expect(await page.locator('.__iet-editable').count()).toBe(0);
+
+    await page.hover('h3[data-edit-line="24"]');
+    await page.waitForTimeout(200);
+    expect(await page.locator('.__iet-editable').count()).toBeGreaterThan(0);
+  });
+
+  it('pre-decorates for Edit, which only targets what the codemod can change', async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'edit' }));
+    await page.waitForTimeout(150);
     expect(await page.locator('.__iet-editable').count()).toBeGreaterThan(0);
   });
 
@@ -458,6 +473,96 @@ describe('opening the toolbar', () => {
     );
     expect(transforms).toHaveLength(4);
     expect(transforms.every((t) => t.length > 0)).toBe(true);
+  });
+});
+
+describe('tool gesture cards', () => {
+  const card = () =>
+    page.evaluate(() => {
+      const el = __IET_TEST__.root.querySelector('.__iet-toolcard');
+      return { hidden: el.hidden, text: el.textContent };
+    });
+
+  it('selecting a tool shows its gestures', async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'inspect' }));
+    await page.waitForTimeout(100);
+
+    const c = await card();
+    expect(c.hidden).toBe(false);
+    expect(c.text).toContain('Inspect');
+    expect(c.text).toContain('Measure');
+  });
+
+  it('finally admits the source editor exists', async () => {
+    // ⌥-click has opened the source editor from any tool since it was
+    // built, and nothing on screen said so.
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'edit' }));
+    await page.waitForTimeout(100);
+
+    expect((await card()).text.toLowerCase()).toContain('source editor');
+  });
+
+  it('gets out of the way at the first click', async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'inspect' }));
+    await page.waitForTimeout(100);
+    await page.click('h3[data-edit-line="24"]');
+    await page.waitForTimeout(100);
+
+    expect((await card()).hidden).toBe(true);
+  });
+});
+
+describe('properties on anything', () => {
+  it('opens for an image — where alt text actually lives', async () => {
+    // The tool promises "links, alt text and classes", and alt text is on
+    // an image: the one kind of element the old text-bearing rule could
+    // never match. Clicking an image did nothing at all.
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'properties' }));
+    await page.waitForTimeout(150);
+
+    await page.click('#logo');
+    await page.waitForTimeout(200);
+
+    const panel = await page.evaluate(() => {
+      const el = __IET_TEST__.root.querySelector('#__iet-properties');
+      return { hidden: el.hidden, title: el.querySelector('.__iet-properties-title')?.textContent };
+    });
+    expect(panel.hidden).toBe(false);
+    expect(panel.title).toContain('img');
+  });
+});
+
+describe('measurements', () => {
+  it('pins with a click, then reads the distance to whatever is hovered', async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'inspect' }));
+    await page.waitForTimeout(150);
+
+    await page.click('h3[data-edit-line="24"]');
+    await page.hover('h1[data-edit-file="src/pages/index.jsx"]');
+    await page.waitForTimeout(250);
+
+    const badges = await page.evaluate(() =>
+      [...__IET_TEST__.root.querySelectorAll('.__iet-measure')]
+        .filter((n) => !n.hidden)
+        .map((n) => n.querySelector('.__iet-measure-badge').textContent)
+    );
+
+    expect(badges.length).toBeGreaterThan(0);
+    // Real pixel readings, not empty pills.
+    for (const b of badges) expect(Number(b)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('shows the element size while hovering', async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'inspect' }));
+    await page.hover('h3[data-edit-line="24"]');
+    await page.waitForTimeout(250);
+
+    const size = await page.evaluate(() => {
+      const el = __IET_TEST__.root.querySelector('.__iet-guide-size');
+      return { hidden: el.hidden, text: el.textContent };
+    });
+    expect(size.hidden).toBe(false);
+    expect(size.text).toMatch(/^\d+ × \d+$/);
   });
 });
 

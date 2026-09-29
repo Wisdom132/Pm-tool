@@ -676,22 +676,63 @@ never touch the repository to leave a comment pinned to a part of the page.
       DNS record or the meta tag, so today it has to be set by hand in the
       database. The widget cannot ship to a customer until this exists.
 
-## A failing test that predates this work
+## The tool itself — closing the gap to VisBug
 
-`tests/e2e/editor.e2e.test.js` → *"opening the toolbar > decorates the page
-straight away"* fails, and has been failing before any of the P3 work. It was
-checked against a clean build of the extension at `HEAD` to be sure.
+The direction set after P3: the platform works, the tool it serves has to be
+worth serving. Three things landed together, because each was found while
+building the previous one.
 
-The assertion is that hiding and re-showing the toolbar leaves elements
-carrying `__iet-editable`. The tool does re-activate — the test above it,
-which asserts `tool === 'inspect'`, passes — but nothing re-decorates. The
-class is right and `decorate()` does apply it; it simply is not called on
-re-show, or `undecorate()` ran and nothing followed it.
+**Properties and Structure now target anything.** Both were only clickable
+on text-bearing elements — and Properties promises "links, alt text and
+classes", where alt text lives on an image, the one kind of element the
+text-bearing rule can never match. The tool's headline feature was
+unreachable, which surfaced as "I cannot get Properties" on a real page.
+Edit alone keeps the narrow rule, correctly: it rewrites copy, and offering
+an edit that fails at commit time is worse than not offering it.
 
-Either the decoration genuinely does not come back, which is the UX
-regression the test's own comment describes, or `inspect` decorates on hover
-by design and the assertion is stale. Worth ten minutes with the toolbar
-open; not touched here because it is unrelated to feedback.
+**Gesture cards.** Selecting a tool now shows a VisBug-style card — name,
+key, and the gesture table — instead of a one-line toast. A tool with four
+gestures got to advertise one of them, and the ⌥-click source editor was
+advertised nowhere at all. The card dismisses on the first click on the
+page, and every tool gained a key (`i e p r c`) so the badge on the card is
+never a lie. `ui/tool-card.js`, with the promise pinned in tests: every
+rail tool has a card, and every editing tool's card names the source editor.
+
+**Measurements.** Inspect pins with a click; hovering anything else reads
+out the pixel distance between them, with a size badge riding the hovered
+element. Nested boxes measure their four insets — the "is this padding 64px
+on both sides" question. The geometry is a pure exported function
+(`segmentsBetween`) because a wrong distance looks exactly as confident as
+a right one; interleaved boxes get *no* number rather than a guessed one.
+
+**Two defects found by the work, both fixed:**
+
+- `elementForKey` resolved undo targets by searching decorated elements —
+  and whole-page tools decorate only what is under the pointer. Undoing a
+  structural move cleared the record without putting the element back.
+  Annotated elements now resolve by their annotation, which exists whatever
+  the tool is doing.
+- `scanAndDecorate` bailed out early for whole-page tools *before*
+  reapplying pending edits, so a framework re-render while Inspect or
+  Comment was active silently reverted every staged edit on the page.
+
+The long-failing e2e test ("decorates the page straight away") fell out of
+this: it asserted pre-decoration, which whole-page Inspect deliberately does
+not do. Rewritten to assert what must actually be true — the first hover
+paints immediately, and Edit still pre-decorates. Both suites are fully
+green for the first time: 994 unit, 131 e2e.
+
+### Still open on the tool
+
+- [ ] Structure ops still require a build annotation (`recordStructuralEdit`
+      refuses without `data-edit-file`), so Rearrange on an unannotated page
+      highlights everything and then declines. The refusal is honest but the
+      Locate flow that Edit falls back to could serve here too.
+- [ ] The measurement pin is Inspect-only. VisBug also measures pinned↔pinned
+      with shift-click multi-select; ours is one pin, one hover.
+- [ ] The gesture cards are static text. VisBug's "Trainer: shift+/" — a
+      re-summonable overlay — is a better recall mechanism than a card that
+      only appears on selection.
 
 ## P4 — Reporting integrations
 

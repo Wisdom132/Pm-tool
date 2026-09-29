@@ -26,6 +26,7 @@ import { openSubmitPanel } from "./submit-panel.js";
 import { createRail, createToast, TOOL } from "./ui/rail.js";
 import { createLabelLayer, createInspectorCard } from "./ui/labels.js";
 import { createGuideLayer } from "./ui/guides.js";
+import { createToolCard } from "./ui/tool-card.js";
 import { createPropertiesPanel } from "./ui/properties.js";
 import { createStructureBar } from "./ui/structure-bar.js";
 import { openSourcePanel, sourceRefFor } from "./ui/source-panel.js";
@@ -72,6 +73,9 @@ let sourcePanel = null;
 let crumbsEl = null;
 
 let activeTool = null;
+/** Inspect's pinned element — the fixed end of a measurement. */
+let pinnedEl = null;
+let toolCard = null;
 let autoDetectMode = false;
 let editableEls = [];
 let activeOverlay = null;
@@ -94,14 +98,27 @@ const INTERACTIVE_TOOLS = new Set([
  * can edit.
  *
  * The registry's rule — annotated elements, plus anything holding direct
- * text — is right for the tools that *change* something: offering an edit
- * that fails at commit time is worse than not offering it.
+ * text — is right for **Edit** alone: it rewrites copy, and offering an
+ * edit that fails at commit time is worse than not offering it.
  *
- * It is wrong for the two that only describe or discuss. You inspect an
- * image to find out which component drew it, and you comment on whatever you
- * can see. Both were silently inert on images, icons and empty buttons.
+ * Every other tool belongs here, and each was silently inert somewhere
+ * until it was added:
+ *
+ * - **Inspect** and **Comment** describe or discuss; you inspect an image
+ *   to find out which component drew it, and you comment on whatever you
+ *   can see. Both were dead on images, icons and empty buttons.
+ * - **Properties** promises "links, alt text and classes" — and alt text
+ *   lives on an image, the one kind of element the text-bearing rule can
+ *   never match. The tool's headline feature was unreachable.
+ * - **Structure** moves, duplicates and deletes elements; a card or a
+ *   figure is exactly what gets rearranged, and neither holds direct text.
  */
-const WHOLE_PAGE_TOOLS = new Set([TOOL.COMMENT, TOOL.INSPECT]);
+const WHOLE_PAGE_TOOLS = new Set([
+  TOOL.COMMENT,
+  TOOL.INSPECT,
+  TOOL.PROPERTIES,
+  TOOL.STRUCTURE,
+]);
 
 // ============================================================
 //  Session persistence
@@ -139,6 +156,7 @@ function buildUi() {
   labels = createLabelLayer();
   inspector = createInspectorCard();
   guides = createGuideLayer();
+  toolCard = createToolCard();
   properties = createPropertiesPanel({
     root,
     onChange: recordAttributeEdit,
@@ -158,10 +176,12 @@ function buildUi() {
     labels.element,
     inspector.element,
     crumbsEl,
+    toolCard.element,
     toast.element
   );
 
   rail.setSide("left");
+  toolCard.setSide("left");
   syncRail();
 }
 
@@ -169,6 +189,7 @@ function buildUi() {
 async function restorePreferences() {
   const stored = await chrome.storage.sync.get([SIDE_STORAGE_KEY, GUIDES_STORAGE_KEY]);
   rail.setSide(stored[SIDE_STORAGE_KEY] || "left");
+  toolCard.setSide(stored[SIDE_STORAGE_KEY] || "left");
 
   // Guides are on unless explicitly turned off.
   const guidesOn = stored[GUIDES_STORAGE_KEY] !== false;
@@ -280,6 +301,7 @@ function markActiveBreakpoint() {
 function flipSide() {
   const next = rail.side === "left" ? "right" : "left";
   rail.setSide(next);
+  toolCard.setSide(next);
   chrome.storage.sync.set({ [SIDE_STORAGE_KEY]: next });
   if (hoveredEl?.isConnected) labels.reposition(hoveredEl);
 }
@@ -324,23 +346,24 @@ function selectTool(toolId) {
   guides.hide();
   hideCrumbs();
 
+  // Switching tools drops the pin: a measurement anchored by a tool that
+  // is no longer active reads as the new tool's doing.
+  pinnedEl = null;
+  guides.clearMeasure();
+
   if (INTERACTIVE_TOOLS.has(toolId)) {
     if (!wasInteractive) setupInteraction();
     else scanAndDecorate();
 
-    toast.show(TOOL_HINTS[toolId], { tone: "info" });
-  } else if (wasInteractive) {
-    teardownInteraction();
+    // The full gesture card, not a one-line toast: a tool with four
+    // gestures got to advertise one of them, and the ⌥-click source editor
+    // was advertised nowhere at all.
+    toolCard.show(toolId);
+  } else {
+    toolCard.hide();
+    if (wasInteractive) teardownInteraction();
   }
 }
-
-const TOOL_HINTS = {
-  [TOOL.EDIT]: "Click any highlighted text to rewrite it",
-  [TOOL.INSPECT]: "Hover anything to see where it comes from; click for detail",
-  [TOOL.PROPERTIES]: "Click an element to edit its links, alt text and classes",
-  [TOOL.STRUCTURE]: "Click an element to move, duplicate or delete it",
-  [TOOL.COMMENT]: "Click anything to leave a note for whoever can fix it",
-};
 
 function runAction(id) {
   switch (id) {
@@ -386,6 +409,8 @@ function setupInteraction() {
 
 function teardownInteraction() {
   cancelActiveEditor();
+  pinnedEl = null;
+  toolCard?.hide();
 
   document.removeEventListener("click", onDocumentClick, true);
   document.removeEventListener("mouseover", onDocumentHover, true);
@@ -412,6 +437,13 @@ function teardownInteraction() {
 
 /** Find editable elements, decorate them, and re-apply pending edits. */
 function scanAndDecorate() {
+  // Pending edits are reapplied whatever the tool. This runs from the DOM
+  // observer after a framework re-render, and a re-render replaces edited
+  // nodes with their original text — bailing out early for a whole-page
+  // tool silently reverted every staged edit the moment someone switched
+  // from Edit to Inspect on a live page.
+  reapplyPendingEdits();
+
   // These target anything, so there is nothing to mark out in advance —
   // and marking only the editable ones would say the opposite of what they
   // do. The hover handler paints whatever is under the cursor.
@@ -432,8 +464,6 @@ function scanAndDecorate() {
   void detected;
 
   for (const el of elements) el.classList.add(CLS.editable);
-
-  reapplyPendingEdits();
 }
 
 function undecorate() {
@@ -522,6 +552,14 @@ function onDocumentHover(e) {
   const state = session.has(editKey(el)) ? "edited" : "hover";
   labels.show(el, { state });
   guides.show(el, state);
+
+  // Pinned by Inspect, hovering something else: read out the distance.
+  if (activeTool === TOOL.INSPECT && pinnedEl?.isConnected && el !== pinnedEl) {
+    guides.measure(pinnedEl, el);
+  } else {
+    guides.clearMeasure();
+  }
+
   showCrumbs(el);
 }
 
@@ -644,7 +682,14 @@ function onDocumentClick(e) {
  *        copy beside another element
  */
 function activateOn(el, event) {
+  // Once someone is using the tool, the gesture card is in the way of the
+  // page they are using it on.
+  toolCard.hide();
+
   if (activeTool === TOOL.INSPECT) {
+    // The pin: the fixed end of a measurement. Hover something else and the
+    // guides read out the distance between them.
+    pinnedEl = el;
     inspector.show(el);
     labels.show(el, { state: "selected" });
     guides.show(el, "selected");
@@ -1120,12 +1165,23 @@ function elementForKey(key) {
   // Stripping only "#attr:" left structural keys unresolvable, so undoing a
   // move cleared the record without putting the element back.
   const base = key.replace(/#(attr:.*|op|run:\d+)$/, "");
-  // The class is what marks an element editable; the data attribute only
-  // exists on elements the build annotated.
-  const candidates = editableEls.length
-    ? editableEls
-    : Array.from(document.querySelectorAll(`.${CLS.editable}`));
-  return candidates.find((el) => editKey(el) === base) || null;
+
+  // Resolution must not depend on decoration state. Whole-page tools keep
+  // `editableEls` empty and paint the class only on the element under the
+  // pointer, so at undo time — which arrives by message, with the pointer
+  // anywhere — neither source held the moved element and the record was
+  // cleared without the DOM being put back. Annotated elements are found by
+  // their annotation instead, which exists whatever the tool is doing.
+  const pools = [
+    editableEls,
+    Array.from(document.querySelectorAll("[data-edit-file]")),
+    Array.from(document.querySelectorAll(`.${CLS.editable}`)),
+  ];
+  for (const pool of pools) {
+    const found = pool.find((el) => editKey(el) === base);
+    if (found) return found;
+  }
+  return null;
 }
 
 /**
@@ -1313,9 +1369,14 @@ function isTypingTarget(e) {
 function onKeydown(e) {
   if (!rail?.visible) return;
 
-  if (e.key === "Escape" && inspector.visible) {
-    inspector.hide();
-    return;
+  if (e.key === "Escape") {
+    toolCard.hide();
+    if (inspector.visible) {
+      inspector.hide();
+      pinnedEl = null;
+      guides.clearMeasure();
+      return;
+    }
   }
 
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
@@ -1334,8 +1395,12 @@ function onKeydown(e) {
 
   if (isTypingTarget(e)) return;
 
-  if (e.key === "i") rail.selectTool(activeTool === TOOL.INSPECT ? null : TOOL.INSPECT);
-  if (e.key === "e") rail.selectTool(activeTool === TOOL.EDIT ? null : TOOL.EDIT);
+  // Every tool has a key, because the hint cards advertise them — a card
+  // that shows a shortcut badge for a key that does nothing teaches people
+  // to stop believing the cards.
+  const toolFor = { i: TOOL.INSPECT, e: TOOL.EDIT, p: TOOL.PROPERTIES, r: TOOL.STRUCTURE, c: TOOL.COMMENT };
+  const tool = toolFor[e.key];
+  if (tool) rail.selectTool(activeTool === tool ? null : tool);
 }
 
 // ============================================================

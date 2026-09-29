@@ -289,6 +289,85 @@
   border-top-color: var(--iet-accent);
 }
 
+/* The element's size, riding its bottom edge. */
+.__iet-guide-size {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--iet-accent-deep);
+  color: #fff;
+  font: 600 11px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Measure segments: a solid line between two boxes, ticked at both ends,
+   with the pixel reading in a badge at its middle. Solid where the guides
+   are dashed, so a distance is never mistaken for an alignment line. */
+.__iet-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.__iet-measure[data-axis='h'] {
+  border-top: 1.5px solid var(--iet-accent);
+}
+
+.__iet-measure[data-axis='v'] {
+  border-left: 1.5px solid var(--iet-accent);
+}
+
+/* End ticks, drawn with the pseudo-elements. */
+.__iet-measure[data-axis='h']::before,
+.__iet-measure[data-axis='h']::after {
+  content: '';
+  position: absolute;
+  top: -5px;
+  height: 9px;
+  width: 0;
+  border-left: 1.5px solid var(--iet-accent);
+}
+.__iet-measure[data-axis='h']::before { left: 0; }
+.__iet-measure[data-axis='h']::after { right: 0; }
+
+.__iet-measure[data-axis='v']::before,
+.__iet-measure[data-axis='v']::after {
+  content: '';
+  position: absolute;
+  left: -5px;
+  width: 9px;
+  height: 0;
+  border-top: 1.5px solid var(--iet-accent);
+}
+.__iet-measure[data-axis='v']::before { top: 0; }
+.__iet-measure[data-axis='v']::after { bottom: 0; }
+
+.__iet-measure-badge {
+  position: absolute;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--iet-accent);
+  color: #fff;
+  font: 700 11px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.__iet-measure[data-axis='h'] .__iet-measure-badge {
+  left: 50%;
+  top: -9px;
+  transform: translate(-50%, -100%);
+}
+
+.__iet-measure[data-axis='v'] .__iet-measure-badge {
+  top: 50%;
+  left: 9px;
+  transform: translateY(-50%);
+}
+
 .__iet-guides[data-state='selected'] .__iet-guide-v {
   border-left-color: var(--iet-accent);
 }
@@ -1745,4 +1824,77 @@
 .__iet-comment-send:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* ── Tool hint card ─────────────────────────────────────────
+   Shown when a tool is selected: what it is, its key, and the
+   gestures — including the ones nothing else on screen admits
+   to, like the alt-click source editor. Dismissed by the first
+   click on the page. */
+.__iet-toolcard {
+  position: fixed;
+  bottom: 20px;
+  left: 76px;
+  z-index: 2147483646;
+  width: 300px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--iet-surface-solid);
+  border: 1px solid var(--iet-line);
+  color: var(--iet-text);
+  box-shadow: var(--iet-shadow);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.__iet-toolcard[data-side='right'] {
+  left: auto;
+  right: 76px;
+}
+
+.__iet-toolcard-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.__iet-toolcard-head strong {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.__iet-toolcard-key {
+  padding: 1px 8px;
+  border: 1px solid var(--iet-accent);
+  border-radius: 5px;
+  color: var(--iet-accent);
+  font: 600 12px/1.6 ui-monospace, Menlo, monospace;
+}
+
+.__iet-toolcard-intro {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--iet-muted);
+}
+
+.__iet-toolcard-rows {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  row-gap: 7px;
+  column-gap: 16px;
+  font-size: 12px;
+}
+
+.__iet-toolcard-rows dt {
+  font-weight: 600;
+  color: var(--iet-text);
+}
+
+.__iet-toolcard-rows dd {
+  margin: 0;
+  text-align: right;
+  color: var(--iet-muted);
+  font-variant-numeric: tabular-nums;
 }
