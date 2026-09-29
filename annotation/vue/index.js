@@ -1,5 +1,7 @@
 'use strict';
 
+const { translationKey } = require('../lib/i18n-key.js');
+
 const path = require('path');
 const { isAnnotationEnabled, stampHtmlTag } = require('../lib/build-info.js');
 
@@ -36,6 +38,34 @@ const { isAnnotationEnabled, stampHtmlTag } = require('../lib/build-info.js');
  * it annotated `<p>text <a>link</a></p>`, offering an edit the codemod then
  * refused at pull-request time.
  */
+/**
+ * The translation key an element renders, when that is all it renders.
+ *
+ * Copy behind `{{ $t('hero.title') }}` has no literal in the component — it
+ * lives in a locale file. Without the key it is unreachable: there is no
+ * text to annotate, so the element is never offered, and the service has
+ * nothing to redirect to the locale JSON.
+ *
+ * A lone interpolation only, with no literal beside it, for the same reason
+ * React requires it: `Hello {{ $t('name') }}` is two things, and rewriting
+ * either through the other's mechanism would lose one.
+ */
+function i18nKeyOf(node, NodeTypes) {
+  const children = node.children || [];
+
+  const interpolations = children.filter((c) => c.type === NodeTypes.INTERPOLATION);
+  const textual = children.filter(
+    (c) => c.type === NodeTypes.TEXT && c.content.trim().length > 0
+  );
+
+  if (interpolations.length !== 1 || textual.length > 0) return null;
+
+  const expression = interpolations[0].content;
+  if (!expression || expression.type !== NodeTypes.SIMPLE_EXPRESSION) return null;
+
+  return translationKey(expression.content);
+}
+
 function isEditable(node, NodeTypes) {
   const children = node.children || [];
 
@@ -54,6 +84,8 @@ const NodeTypes = {
   ELEMENT: 1,
   TEXT: 2,
   COMMENT: 3,
+  SIMPLE_EXPRESSION: 4,
+  INTERPOLATION: 5,
   ATTRIBUTE: 6,
 };
 
@@ -79,7 +111,9 @@ function collectMutations(
     // to something else, and the element that finally renders them is not
     // this one, so an annotation here would point at the wrong element.
     if (!/^[A-Z]/.test(tag)) {
-      if (isEditable(node, NodeTypes) || isTemplateRoot) {
+      const i18nKey = isEditable(node, NodeTypes) ? null : i18nKeyOf(node, NodeTypes);
+
+      if (isEditable(node, NodeTypes) || i18nKey || isTemplateRoot) {
         const alreadyAnnotated =
           Array.isArray(node.props) &&
           node.props.some(
@@ -103,7 +137,9 @@ function collectMutations(
           // that claims nothing false, and without it an image, an icon or
           // a footer full of links has no annotated ancestor at all, so
           // Inspect and Comment can say nothing about where it came from.
-          const editable = isEditable(node, NodeTypes);
+          // Text behind a translation function is editable too — the
+          // edit lands in the locale file rather than the component.
+          const editable = isEditable(node, NodeTypes) || Boolean(i18nKey);
 
           mutations.push({
             offset: insertOffset,
@@ -112,6 +148,7 @@ function collectMutations(
               ` data-edit-line="${line}"` +
               ` data-edit-col="${col}"` +
               (editable ? ` data-editable="true"` : ``) +
+              (i18nKey ? ` data-edit-i18n-key="${i18nKey}"` : ``) +
               ` data-edit-framework="vue"`,
           });
         }

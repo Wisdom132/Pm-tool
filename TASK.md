@@ -420,12 +420,39 @@ frameworks, so the difference is correct rather than a latent defect.
 
 ### Still open in the annotation layer
 
-- [ ] **`data-edit-i18n-key` is emitted only by React.** Translated copy on
-      Vue, Svelte and Angular is unreachable: the element holds `{{ t('x') }}`
-      with no literal, so it is not annotated, and there is no key for
+- [x] **`data-edit-i18n-key` was emitted only by React.** Translated copy on
+      Vue, Svelte and Angular was unreachable: the element holds `{{ t('x') }}`
+      with no literal, so it was not annotated, and there was no key for
       `resolveI18nEdits` to redirect to a locale file. The whole i18n path
-      exists and works — for one framework of four. Each needs its own idiom
-      recognised (`$t()`, `| translate`, `t()`).
+      existed and worked — for one framework of four.
+
+      All four now emit it. The reader is shared —
+      `annotation/lib/i18n-key.js`, 37 tests — so the plugins recognise the
+      same set of idioms rather than four hand-rolled regexes:
+
+      - calls, in any framework: `t('k')`, `$t('k')`, `i18n.t('k')`, `$_('k')`
+      - pipes, the dominant Angular form: `'k' | translate`, `| transloco`
+
+      It refuses anything it cannot read back as a literal key — computed
+      keys, template literals, concatenation, conditionals. A *wrong* key is
+      worse than none: the edit lands in the wrong entry of a locale file and
+      nothing in the pull request looks out of place.
+
+      An element carrying only a translation call is now editable, because
+      the locale file *can* be rewritten; one carrying `{{ count }}` still is
+      not. Covered per-framework in `tests/annotation-parity.test.js`.
+
+      No change was needed downstream: `content.js` reads the attribute,
+      `I18nService` ranks locale files off the repository tree, and
+      `LOCALE_DIR` already matched every convention the three frameworks use
+      — `src/locales/en.json`, `src/assets/i18n/en.json`,
+      `src/lib/i18n/locales/en.json`.
+
+- [ ] **Locale files must be JSON.** `isSourceLocaleFile` filters on
+      `.json`, so vue-i18n's YAML messages and Angular's built-in `.xlf`
+      never rank. The key resolves to nothing and the edit is reported as
+      `i18nUnresolved` — skipped, not guessed, which is the right failure but
+      still a failure on two common setups.
 
 ### Provenance is not the editing contract
 

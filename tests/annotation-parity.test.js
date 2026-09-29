@@ -73,7 +73,7 @@ const PLUGINS = [
 
 /** Attributes on each annotated tag, as the browser would see them. */
 function tags(output) {
-  return [...output.matchAll(/<([a-zA-Z][\w-]*)((?:\s+[a-z-]+=(?:"[^"]*"|\{?"[^"]*"\}?))*)/g)]
+  return [...output.matchAll(/<([a-zA-Z][\w-]*)((?:\s+[a-z0-9-]+=(?:"[^"]*"|\{?"[^"]*"\}?))*)/g)]
     .filter((m) => m[2].includes('data-edit-file'))
     .map((m) => ({
       tag: m[1].toLowerCase(),
@@ -81,6 +81,7 @@ function tags(output) {
       line: Number(/data-edit-line=\{?"(\d+)"/.exec(m[2])?.[1]),
       col: /data-edit-col=\{?"(\d+)"/.exec(m[2])?.[1],
       framework: /data-edit-framework=\{?"([a-z]+)"/.exec(m[2])?.[1],
+      i18nKey: /data-edit-i18n-key=\{?"([^"]*)"/.exec(m[2])?.[1],
     }));
 }
 
@@ -214,5 +215,56 @@ describe.each(PLUGINS)('$name — edits that would destroy content', ({ name, an
     const markup = '<div class="row"><em></em></div>';
     const once = annotate(markup);
     expect(annotate(once), `${name}`).toBe(once);
+  });
+});
+
+// ============================================================
+//  Translated copy
+//
+//  Text behind a translation function has no literal in the
+//  component — it lives in a locale file. Without the key it is
+//  unreachable: nothing to annotate, and nothing for
+//  `resolveI18nEdits` to redirect.
+//
+//  This shipped in React only. The whole i18n path — the
+//  service, `locale.js`, the locale-file ranking — existed and
+//  was tested, and served one framework of four.
+// ============================================================
+const I18N_MARKUP = {
+  // A lone translation call, no literal beside it.
+  react: "<h1>{t('hero.title')}</h1>",
+  vue: "<h1>{{ $t('hero.title') }}</h1>",
+  svelte: "<h1>{$_('hero.title')}</h1>",
+  // The pipe is the dominant Angular idiom, and reads the other way round.
+  angular: "<h1>{{ 'hero.title' | translate }}</h1>",
+};
+
+const COMPUTED_MARKUP = {
+  react: '<h1>{count}</h1>',
+  vue: '<h1>{{ count }}</h1>',
+  svelte: '<h1>{count}</h1>',
+  angular: '<h1>{{ count }}</h1>',
+};
+
+describe.each(PLUGINS)('$name — translated copy', ({ name, annotate }) => {
+  it('records the translation key', () => {
+    const found = tags(annotate(I18N_MARKUP[name]));
+    expect(found[0]?.i18nKey, `${name}: no key`).toBe('hero.title');
+  });
+
+  it('offers it for editing, since the locale file can be rewritten', () => {
+    const found = editable(annotate(I18N_MARKUP[name]));
+    expect(found.length, `${name}`).toBe(1);
+  });
+
+  it('does not invent a key for an ordinary expression', () => {
+    // A wrong key sends the edit into the wrong entry of a locale file, and
+    // nothing in the pull request would look out of place.
+    const found = tags(annotate(COMPUTED_MARKUP[name]));
+    expect(found[0]?.i18nKey, `${name}`).toBeUndefined();
+  });
+
+  it('does not offer an ordinary expression for editing', () => {
+    expect(editable(annotate(COMPUTED_MARKUP[name])).length, `${name}`).toBe(0);
   });
 });

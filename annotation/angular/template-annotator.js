@@ -8,6 +8,7 @@ const {
   findOpenTagEnd: findOpenEnd,
   findCloseTag,
 } = require('../lib/markup-scan.js');
+const { translationKey } = require('../lib/i18n-key.js');
 
 /**
  * Shared HTML annotation logic for Angular templates.
@@ -88,7 +89,15 @@ function annotateSource(source, filePath, framework, lineOffset = 0) {
     // Svelte, which feeds the same codemod, has always refused both.
     const hasChildElement = /[<>]/.test(innerContent);
     const interpolated = /\{\{/.test(innerContent);
-    const editable = !hasChildElement && !interpolated && Boolean(innerContent.trim());
+    const literal = !hasChildElement && !interpolated && Boolean(innerContent.trim());
+
+    // `{{ 'hero.title' | translate }}` is copy in a locale file. The pipe is
+    // the dominant Angular idiom and reads the other way round from a call,
+    // so the key comes first. A lone interpolation only.
+    const lone = hasChildElement ? null : /^\s*\{\{([\s\S]*)\}\}\s*$/.exec(innerContent);
+    const i18nKey = literal || !lone ? null : translationKey(lone[1]);
+
+    const editable = literal || Boolean(i18nKey);
 
     // A root still earns provenance even with no text of its own: without
     // it, an image or an icon has no annotated ancestor, and Inspect and
@@ -106,6 +115,7 @@ function annotateSource(source, filePath, framework, lineOffset = 0) {
         ` data-edit-line="${line}"` +
         ` data-edit-col="${col}"` +
         (editable ? ` data-editable="true"` : ``) +
+        (i18nKey ? ` data-edit-i18n-key="${i18nKey}"` : ``) +
         ` data-edit-framework="${framework}"`,
     });
   }

@@ -8,6 +8,7 @@ const {
   findOpenTagEnd,
   findCloseTag,
 } = require('../lib/markup-scan.js');
+const { translationKey } = require('../lib/i18n-key.js');
 
 /**
  * Annotation for Svelte components.
@@ -98,8 +99,17 @@ function annotateSource(source, filePath) {
     // Child elements mean the text is not this element's to rewrite, and
     // `{count}` is a value the component computes — neither is editable
     // copy, so neither earns an *edit*.
-    const editable =
+    const literal =
       !/[<>]/.test(inner) && !/\{/.test(inner) && Boolean(inner.trim());
+
+    // `{$_('hero.title')}` is copy, it just lives in a locale file. Without
+    // the key it is unreachable: no literal to annotate, and nothing for the
+    // service to redirect. A lone expression only, so that `Hi {$_('n')}`
+    // — which is two things — is not mistaken for one.
+    const lone = /^\s*\{([\s\S]*)\}\s*$/.exec(inner);
+    const i18nKey = literal || !lone ? null : translationKey(lone[1]);
+
+    const editable = literal || Boolean(i18nKey);
 
     // A root still earns *provenance*. `data-editable` says the codemod can
     // rewrite this; `data-edit-file` says where it came from. Emitting only
@@ -114,6 +124,7 @@ function annotateSource(source, filePath) {
         ` data-edit-line="${lineAt(masked, start)}"` +
         ` data-edit-col="${columnAt(masked, start)}"` +
         (editable ? ` data-editable="true"` : ``) +
+        (i18nKey ? ` data-edit-i18n-key="${i18nKey}"` : ``) +
         ` data-edit-framework="svelte"`,
     });
   }
