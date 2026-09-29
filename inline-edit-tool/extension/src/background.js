@@ -186,6 +186,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // ── Screenshot the visible tab ─────────────────────────────
+  //
+  // Only the service worker can call this; a content script has no access to
+  // `chrome.tabs`. It captures the *visible* viewport, which is the right
+  // thing here — a comment is about what the person was looking at, and a
+  // full-page capture would not show where they had scrolled to.
+  //
+  // The content script hides its own overlay before asking, so the image is
+  // the customer's page rather than a picture of this tool.
+  if (message.type === 'CAPTURE_TAB') {
+    (async () => {
+      try {
+        const dataUrl = await chrome.tabs.captureVisibleTab({
+          // JPEG, not PNG: a screenshot of a real page is several megabytes
+          // as PNG and a fraction of that as JPEG, and the API caps the
+          // upload at 512KB. Quality 70 is legible text.
+          format: 'jpeg',
+          quality: 70,
+        });
+        sendResponse({ data: dataUrl });
+      } catch (err) {
+        // Capture fails on privileged pages, and when the tab is not
+        // focused. A comment without a screenshot is still a comment, so
+        // this is reported and never thrown.
+        sendResponse({ error: err.message });
+      }
+    })();
+    return true;
+  }
+
   // ── Create PR ──────────────────────────────────────────────
   if (message.type === 'CREATE_PR') {
     (async () => {

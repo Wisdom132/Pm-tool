@@ -62,7 +62,12 @@ export class SitesService {
       hostname: existing.hostname,
       branch,
       name: dto.name?.trim(),
+      feedbackWidget: dto.feedbackWidget,
       branchChange: branchChanged ? { from: existing.branch, to: branch } : null,
+      widgetChange:
+        dto.feedbackWidget !== undefined && dto.feedbackWidget !== existing.site.feedbackWidget
+          ? dto.feedbackWidget
+          : null,
     });
   }
 

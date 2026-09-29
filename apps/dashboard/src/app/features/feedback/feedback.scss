@@ -11,3 +11,7 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 .dot { color: var(--p-text-muted-color); }
 .unverified { font-size: 11px; opacity: 0.7; }
 .promoted { display: inline-flex; align-items: center; gap: 4px; font-size: var(--ds-t-caption); color: var(--p-primary-color); }
+.filters { display: flex; gap: var(--ds-s-3); flex-wrap: wrap; align-items: center; }
+.filters .count { margin-left: var(--ds-s-2); font-size: var(--ds-t-caption); opacity: 0.7; font-variant-numeric: tabular-nums; }
+.assignee { display: inline-flex; align-items: center; gap: var(--ds-s-1); margin-left: auto; font-size: var(--ds-t-caption); color: var(--p-text-muted-color); }
+.shot { margin-left: var(--ds-s-2); color: var(--p-text-muted-color); font-size: var(--ds-t-caption); }

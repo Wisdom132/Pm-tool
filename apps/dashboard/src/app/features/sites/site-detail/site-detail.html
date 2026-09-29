@@ -35,9 +35,57 @@
       This hostname is not verified. Add the TXT record
       <code>_inline-edit.{{ s.hostname }}</code> with the value
       <code>{{ s.site.verificationToken }}</code>, or a meta tag with the
-      same value. Nothing checks it yet, so editing works either way.
+      same value. Editing works either way — but the public feedback widget
+      will not collect anything until this is verified, because otherwise
+      anyone could claim this hostname and receive feedback meant for you.
     </p-message>
   }
+
+  <section class="ds-surface panel">
+    <h2>Public feedback widget</h2>
+
+    <div class="widget-row">
+      <p-toggleswitch
+        [ngModel]="feedbackWidget"
+        (ngModelChange)="toggleWidget(s, $event)"
+        [disabled]="saving() || !isAdmin()"
+        inputId="widget" />
+      <label for="widget">
+        {{ feedbackWidget ? 'On — this site is accepting public feedback' : 'Off' }}
+      </label>
+    </div>
+
+    <small>
+      Lets anyone on the page leave a comment without an account, pinned to
+      the element they are talking about. Off by default: switching it on
+      opens an endpoint that accepts comments and screenshots from any
+      visitor. Turning it off stops collection immediately.
+    </small>
+
+    @if (feedbackWidget && !s.site.verifiedAt) {
+      <p-message severity="warn" [closable]="false">
+        The widget is on, but this hostname is not verified yet, so nothing
+        will be collected until it is.
+      </p-message>
+    }
+
+    @if (feedbackWidget) {
+      <div class="embed">
+        <label>Add this to your pages</label>
+        <code class="snippet">{{ embedSnippet() }}</code>
+        <p-button
+          [label]="copied() ? 'Copied' : 'Copy'"
+          [icon]="copied() ? 'pi pi-check' : 'pi pi-copy'"
+          size="small"
+          [text]="true"
+          (onClick)="copyEmbed()" />
+      </div>
+      <small>
+        Nothing else to configure — the site is identified by its own
+        hostname, server-side.
+      </small>
+    }
+  </section>
 
   <section class="ds-surface panel">
     <h2>Where it points</h2>

@@ -505,12 +505,24 @@ is the line that catches it.
 Distinct from opening an issue or a pull request: a way for people who will
 never touch the repository to leave a comment pinned to a part of the page.
 
-- [~] **P3.1** A widget the site embeds, or the extension provides. Both,
-      eventually — the embed is what lets a client comment without installing
-      anything.
-      *The extension half is done. The embed is not, and it is the half that
-      carries P3.5's abuse surface: `POST /feedback` requires a session, so
-      there is no unauthenticated ingest to flood yet.*
+- [x] **P3.1** A widget the site embeds, or the extension provides. Both,
+      now.
+      *`widget/` — one file, 14.2KB minified, no dependencies, with a size
+      budget the build enforces so it cannot grow a kilobyte at a time
+      unnoticed. It boots into an **open** shadow root (the extension's is
+      closed; this one belongs to the page's owner, who should be able to
+      style and test it), and it shares `element-selector.js` with the
+      extension rather than copying it — two copies of that logic would
+      drift silently, which is the class of bug the annotation work just
+      finished fixing.*
+
+      *Embedding is one tag with a `data-api` attribute. Nothing else: the
+      site is identified by its own hostname, server-side.*
+
+      *The snippet shown in the dashboard is real — `widget/build.js` copies
+      the bundle into the dashboard's static assets, and the dashboard's
+      `build` and `start` scripts run it. Without that the snippet a customer
+      pastes would 404.*
 - [x] **P3.2** Feedback is pinned to an **element**, and where the page is
       annotated, to a **source file and line**. That link is the thing no
       general feedback tool has, and it is already built.
@@ -520,15 +532,166 @@ never touch the repository to leave a comment pinned to a part of the page.
       `nth-of-type`. 18 tests, including that every selector it emits
       re-finds its own element. An invalid `sourceFile` drops the link and
       keeps the comment rather than rejecting it.*
-- [ ] **P3.3** Screenshot, viewport, browser and the page URL attached
+- [x] **P3.3** Screenshot, viewport, browser and the page URL attached
       automatically. Most of a bug report is context nobody types.
-- [ ] **P3.4** Inbox in the dashboard: triage, assign, resolve, and promote a
+      *`userAgent` was hardcoded `null`; it now comes from the request
+      **header**, on both paths and never from the body. A client that
+      declares its own browser can declare any browser, and a value the
+      reporter chose is worth less than no value because it looks like
+      evidence.*
+
+      *Screenshots live in a capped `Bytes` column. Object storage is the
+      right answer at scale, but there is no bucket in this system and adding
+      one to ship an image is a large dependency for a small feature; the
+      cap keeps the growth bounded and moving it later turns the column into
+      a key and `readScreenshot` into a fetch, with no other caller
+      affected. The bytes are never inlined in a list response — a page of
+      twenty-five comments each carrying half a megabyte is a response
+      nobody asked for — only `hasScreenshot`, with its own route for the
+      image.*
+
+      *The two clients capture differently, because the platforms differ and
+      pretending otherwise would be worse:*
+
+      - *the **extension** uses `chrome.tabs.captureVisibleTab`, hiding its
+        own overlay first so the picture is the customer's page and not a
+        picture of this tool;*
+      - *the **widget** uses `getDisplayMedia`, which prompts. The popular
+        alternative is a DOM-rasterising library, and that is not a capture:
+        it re-renders from computed styles, so cross-origin images go
+        missing and transforms are approximated. For a bug report the
+        difference between the drawing and the real page looks like the bug.
+        It also costs a couple of hundred kilobytes on a widget whose point
+        is being small. Where capture is unavailable the widget says so
+        instead of offering a button that cannot work.*
+- [x] **P3.4** Inbox in the dashboard: triage, assign, resolve, and promote a
       comment into an issue or a pull request — which is where this rejoins
       the existing tool.
-- [ ] **P3.5** **Abuse surface.** A public endpoint that accepts screenshots
+      *Two things were genuinely missing, under a list page and a detail
+      page that already worked.*
+
+      ***Assignment.*** *A shared inbox with no owner column has no way to
+      stop two people picking up the same comment. `assignedToId`, plus
+      `mine` and `unassigned` queues and counts — the two questions somebody
+      opening an inbox is actually asking. The queues are a separate axis
+      from status rather than four more buttons in one row, because "new"
+      and "mine" are both true of the same comment. The membership check
+      runs inside the write transaction: split across a service read and a
+      repository write, a user removed from the organisation in between ends
+      up holding feedback they can no longer see.*
+
+      ***Promotion that writes the issue.*** *`promote` only ever recorded a
+      URL somebody pasted after opening the issue by hand — retyping the
+      page, the element and the source line that were already attached to
+      the comment. `POST /feedback/:id/issue` opens it through the provider
+      and records the result. Marked promoted only **after** the issue
+      exists, so a failed provider call leaves nothing behind and a retry is
+      safe. Recording an external link is still there, for a team that files
+      in Jira.*
+- [x] **P3.5** **Abuse surface.** A public endpoint that accepts screenshots
       from unauthenticated visitors needs rate limiting, size caps, spam
       handling and a way to turn it off. Worth designing before shipping, not
       after the first flood.
+      *Designed before, as intended. In the order a request meets them:*
+
+      1. *`POST /api/public/feedback` is its own controller and its own
+         path, so no change to the authenticated route can widen it by
+         accident.*
+      2. *A **per-address** rate limit, applied before the body is read.
+         Twenty an hour: generous for a person, useless for a script, and
+         not lower because addresses are shared — an office behind one NAT
+         is many real visitors wearing one address.*
+      3. *A **per-site** limit as well. Not redundant: a flood spread across
+         many addresses defeats the per-address one entirely.*
+      4. *The site must have **switched the widget on** — off by default,
+         because registering a site should not quietly open an ingest
+         endpoint — **and verified its domain**. That second one is the check
+         `verificationToken` was always for: without it anyone can register
+         `acme.com` and collect feedback meant for its owner.*
+      5. *The **page URL must be on the site's own hostname**, or a comment
+         filed against a real site could name any URL at all.*
+      6. *Screenshots are checked against **magic bytes**, not their declared
+         type. Believing the label is how an upload endpoint becomes a way to
+         host arbitrary content on our origin; SVG is refused outright,
+         being a document that executes script. The image is served back
+         with `nosniff`, a sandbox CSP, and `Cache-Control: private`.*
+      7. *Addresses are stored as a **salted hash**. An unsalted hash of an
+         IPv4 address is reversible by brute force in seconds, there being
+         only four billion.*
+      8. *Every failure gives **one message**. An anonymous caller cannot
+         tell "unregistered" from "unverified" from "switched off" — the
+         alternative is free reconnaissance.*
+
+      *The off switch is one flag on the site, effective on the next
+      request, with no deploy needed on the customer's side. Turning it on
+      or off is its own audit entry, because "who turned this on" is the
+      first question asked after a flood.*
+
+### Found while building P3, and fixed
+
+- **Express caps a JSON body at 100KB.** The screenshot column accepts
+  512KB, so every screenshot of a real page was refused with a 413 before
+  validation ever ran, and the size cap in the DTO was unreachable code. A
+  small test PNG passed either way, which is why the integration test now
+  uploads a realistic 300KB one.
+- **CORS could not serve both callers.** The dashboard and the extension
+  send a session cookie, so their origins must be an allowlist. The widget
+  runs on customer domains we have never heard of, where an allowlist is a
+  list nobody maintains and the first forgotten entry is a widget that
+  silently stops working. `enableCors` is gone; two policies are chosen by
+  path. Mounted as two layers instead, whichever ran second overwrote the
+  other's `Access-Control-Allow-Credentials` — and the combination that
+  resulted, `*` with credentials, is the one browsers actually refuse.
+- **An `<img src>` cannot carry `x-organisation-id`,** which every
+  tenant-scoped route requires, so the screenshot would have been answered
+  403. It is fetched as a blob through the API client and turned into an
+  object URL, which is revoked on destroy — navigating twenty comments
+  otherwise leaks twenty screenshots.
+- **`SITE_SUMMARY` did not select `feedbackWidget`,** so the dashboard's
+  `SiteEnvironment` type claimed a field the list endpoint never sent. That
+  is precisely the failure the comment at the top of `api-types.ts` warns
+  about.
+- **The site-detail page said domain verification was unchecked.** It is
+  now load-bearing for the public widget, so the copy says which half it
+  gates rather than "nothing checks it yet".
+
+### Still open in P3
+
+- [ ] **P3.4a** No reply thread. There is no comments model, so a composer
+      on the detail page would accept what somebody typed and drop it, which
+      is worse than not offering it. Wanted, but it needs its own table and
+      a decision about whether an anonymous reporter can be replied to at
+      all — their email is self-declared and unverified.
+- [ ] **P3.5a** No spam handling beyond the rate limits. `authorIpHash` is
+      recorded and nothing reads it yet: there is no way to block an
+      abusive source, and no content heuristic. The hash is there so that
+      when it is needed the data already exists.
+- [ ] **P3.5b** **Rate-limit counters are still per process.** On the
+      authenticated routes that was an acceptable ceiling. On a public
+      endpoint it is the whole defence, so N instances meaning N times the
+      limit matters much more than it did. Moving `hit()` to Postgres or
+      Redis is a change to that one function; no call site cares.
+- [ ] **P2.5 is now load-bearing.** Verification gates the public widget,
+      but nothing sets `verifiedAt` — there is no endpoint that checks the
+      DNS record or the meta tag, so today it has to be set by hand in the
+      database. The widget cannot ship to a customer until this exists.
+
+## A failing test that predates this work
+
+`tests/e2e/editor.e2e.test.js` → *"opening the toolbar > decorates the page
+straight away"* fails, and has been failing before any of the P3 work. It was
+checked against a clean build of the extension at `HEAD` to be sure.
+
+The assertion is that hiding and re-showing the toolbar leaves elements
+carrying `__iet-editable`. The tool does re-activate — the test above it,
+which asserts `tool === 'inspect'`, passes — but nothing re-decorates. The
+class is right and `decorate()` does apply it; it simply is not called on
+re-show, or `undecorate()` ran and nothing followed it.
+
+Either the decoration genuinely does not come back, which is the UX
+regression the test's own comment describes, or `inspect` decorates on hover
+by design and the assertion is stale. Worth ten minutes with the toolbar
+open; not touched here because it is unrelated to feedback.
 
 ## P4 — Reporting integrations
 

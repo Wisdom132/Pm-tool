@@ -18,7 +18,8 @@ import { annotationFor, commentTargetFrom, selectorFor } from "./element-selecto
 import { openCommentComposer } from "./ui/comment-composer.js";
 import { resolveServiceUrl } from "./config.js";
 import { getSessionId } from "./auth-storage.js";
-import { getShadowRoot, isOwnUi } from "./shadow-host.js";
+import { getShadowHost, getShadowRoot, isOwnUi } from "./shadow-host.js";
+import { captureViewport } from "./screenshot.js";
 import { createEditSession } from "./edit-session.js";
 import { openEditorOverlay } from "./editor-overlay.js";
 import { openSubmitPanel } from "./submit-panel.js";
@@ -703,7 +704,14 @@ async function leaveComment(el) {
     element: el,
     description: describeElement(el),
     source,
-    onSubmit: async (message) => {
+    onSubmit: async (message, options = {}) => {
+      // Taken before the request, with the overlay hidden, so the image is
+      // the customer's page rather than a picture of this tool. A failure
+      // here costs the screenshot and never the comment.
+      const screenshot = options.screenshot
+        ? await captureViewport(getShadowHost())
+        : null;
+
       const stored = await chrome.storage.sync.get(["prServiceUrl"]);
       const response = await chrome.runtime.sendMessage({
         type: "API_POST",
@@ -719,6 +727,7 @@ async function leaveComment(el) {
             sourceFile: source.sourceFile || undefined,
             sourceLine: source.sourceLine ?? undefined,
             viewport: `${window.innerWidth}x${window.innerHeight}`,
+            screenshot: screenshot || undefined,
           },
         },
       });

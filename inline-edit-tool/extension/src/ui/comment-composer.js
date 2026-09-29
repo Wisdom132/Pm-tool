@@ -23,8 +23,9 @@ const P = "__iet";
  * @param {Element}    opts.element      what was clicked
  * @param {string}     opts.description  a readable label for it
  * @param {{sourceFile: string|null, sourceLine: number|null}} opts.source
- * @param {(message: string) => Promise<{error?: string}>} opts.onSubmit
+ * @param {(message: string, options: {screenshot: boolean}) => Promise<{error?: string}>} opts.onSubmit
  * @param {Function}   [opts.onClose]
+ * @param {boolean}    [opts.canScreenshot]  false where capture is unavailable
  * @returns {{close: () => void}}
  */
 export function openCommentComposer({
@@ -34,6 +35,7 @@ export function openCommentComposer({
   source,
   onSubmit,
   onClose,
+  canScreenshot = true,
 }) {
   const backdrop = document.createElement("div");
   backdrop.id = `${P}-comment-backdrop`;
@@ -76,6 +78,26 @@ export function openCommentComposer({
     where.classList.add(`${P}-comment-where-weak`);
   }
 
+  // Attaching a picture of somebody's screen is a thing to opt into, not a
+  // thing to discover afterwards. On by default because it is almost always
+  // wanted, and stated plainly so it can be turned off before sending.
+  const shotRow = document.createElement("label");
+  shotRow.className = `${P}-comment-shot`;
+
+  const shotBox = document.createElement("input");
+  shotBox.type = "checkbox";
+  shotBox.checked = canScreenshot;
+  shotBox.disabled = !canScreenshot;
+
+  shotRow.append(
+    shotBox,
+    document.createTextNode(
+      canScreenshot
+        ? "Attach a screenshot of this view"
+        : "Screenshots are not available on this page",
+    ),
+  );
+
   const status = document.createElement("p");
   status.className = `${P}-comment-status`;
   status.hidden = true;
@@ -108,7 +130,7 @@ export function openCommentComposer({
     send.textContent = "Sending…";
     status.hidden = true;
 
-    const result = await onSubmit(message);
+    const result = await onSubmit(message, { screenshot: shotBox.checked });
 
     if (result?.error) {
       send.disabled = false;
@@ -145,7 +167,7 @@ export function openCommentComposer({
   });
 
   actions.append(cancel, send);
-  card.append(title, about, field, where, status, actions);
+  card.append(title, about, field, where, shotRow, status, actions);
   backdrop.appendChild(card);
 
   backdrop.addEventListener("click", (e) => {

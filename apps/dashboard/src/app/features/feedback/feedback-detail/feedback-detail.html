@@ -42,6 +42,14 @@
         }
         · {{ f.createdAt | date: 'd MMM y, HH:mm' }}
       </span>
+      @if (f.source === 'widget') {
+        <p-tag value="Widget" severity="secondary" [rounded]="true" />
+      }
+      @if (f.assignedTo) {
+        <span class="assigned">
+          <i class="pi pi-user"></i> {{ f.assignedTo.name || f.assignedTo.email }}
+        </span>
+      }
     </header>
 
     <p class="message">{{ f.message }}</p>
@@ -61,6 +69,15 @@
       @if (f.environment) { <div><dt>Site</dt><dd>{{ f.environment.hostname }} · {{ f.environment.label }}</dd></div> }
       @if (f.viewport) { <div><dt>Viewport</dt><dd>{{ f.viewport }}</dd></div> }
       @if (f.userAgent) { <div><dt>Browser</dt><dd class="ua">{{ f.userAgent }}</dd></div> }
+      @if (f.assignedTo && f.assignedAt) {
+        <div>
+          <dt>Assigned</dt>
+          <dd>
+            to {{ f.assignedTo.name || f.assignedTo.email }},
+            {{ f.assignedAt | date: 'd MMM y, HH:mm' }}
+          </dd>
+        </div>
+      }
       @if (f.resolvedBy && f.resolvedAt) {
         <div>
           <dt>Resolved</dt>
@@ -70,6 +87,21 @@
         </div>
       }
     </dl>
+
+    @if (screenshot(); as shot) {
+      <figure class="shot" [class.shot-open]="screenshotOpen()">
+        <img
+          [src]="shot"
+          alt="The page as the reporter saw it"
+          (click)="screenshotOpen.set(!screenshotOpen())" />
+        <figcaption>
+          What they were looking at.
+          <button type="button" (click)="screenshotOpen.set(!screenshotOpen())">
+            {{ screenshotOpen() ? 'Shrink' : 'Expand' }}
+          </button>
+        </figcaption>
+      </figure>
+    }
   </section>
 
   <section class="ds-surface panel">
@@ -89,6 +121,22 @@
     </div>
 
     <div class="field">
+      <label for="assignee">Assigned to</label>
+      <p-select
+        inputId="assignee"
+        [options]="assignees()"
+        [ngModel]="f.assignedTo?.id ?? null"
+        (ngModelChange)="assign(f, $event)"
+        optionLabel="label"
+        optionValue="value"
+        size="small"
+        [disabled]="busy()" />
+      <small>
+        So two people do not pick up the same comment.
+      </small>
+    </div>
+
+    <div class="field">
       <label for="promoted">Issue or pull request</label>
       @if (f.promotedUrl) {
         <p class="promoted">
@@ -96,6 +144,23 @@
           <a [href]="f.promotedUrl" target="_blank" rel="noopener">{{ f.promotedUrl }}</a>
         </p>
       } @else {
+        <p-button
+          label="Open an issue"
+          icon="pi pi-github"
+          size="small"
+          [disabled]="busy() || !f.environment"
+          (onClick)="createIssue(f)" />
+        <small>
+          @if (f.environment) {
+            Creates it on the repository behind {{ f.environment.hostname }},
+            carrying the page, the element@if (f.sourceFile) { and
+            <code>{{ f.sourceFile }}</code>} across.
+          } @else {
+            This comment is not linked to a site environment, so there is no
+            repository to open an issue on.
+          }
+        </small>
+
         <div class="promote">
           <input
             pInputText
@@ -105,13 +170,11 @@
           <p-button
             label="Link"
             size="small"
+            [outlined]="true"
             [disabled]="!promoteUrl.trim() || busy()"
             (onClick)="promote(f)" />
         </div>
-        <small>
-          Recording it here is how the person who left this comment can see
-          it was acted on. Creating it is still done from the editor.
-        </small>
+        <small>Or record one you created somewhere else.</small>
       }
     </div>
   </section>

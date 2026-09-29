@@ -1,13 +1,24 @@
 <ds-page-header title="Feedback" subtitle="Comments left on your sites, pinned to the element they are about" />
 
-<p-selectbutton
-  [options]="filters"
-  [ngModel]="filter()"
-  (ngModelChange)="onFilterChange($event)"
-  optionLabel="label"
-  optionValue="value"
-  size="small"
-  [allowEmpty]="false" />
+<div class="filters">
+  <p-selectbutton
+    [options]="filters"
+    [ngModel]="filter()"
+    (ngModelChange)="onFilterChange($event)"
+    optionLabel="label"
+    optionValue="value"
+    size="small"
+    [allowEmpty]="false" />
+
+  <p-selectbutton
+    [options]="queues()"
+    [ngModel]="queue()"
+    (ngModelChange)="onQueueChange($event)"
+    optionLabel="label"
+    optionValue="value"
+    size="small"
+    [allowEmpty]="false" />
+</div>
 
 @if (loader.state() === 'error') {
   <div class="ds-surface">
@@ -40,6 +51,14 @@
           </span>
           <span class="dot">·</span>
           <span class="ds-cell-muted">{{ item.createdAt | date: 'd MMM, HH:mm' }}</span>
+          @if (item.source === 'widget') {
+            <p-tag value="Widget" severity="secondary" [rounded]="true" />
+          }
+          @if (item.assignedTo) {
+            <span class="assignee" [title]="item.assignedTo.email">
+              <i class="pi pi-user"></i> {{ item.assignedTo.name || item.assignedTo.email }}
+            </span>
+          }
         </header>
 
         <p class="message">{{ item.message }}</p>
@@ -53,6 +72,9 @@
               <span class="ds-cell-muted">
                 {{ item.pagePath }}{{ item.element ? ' · ' + item.element : '' }} — source not resolved
               </span>
+            }
+            @if (item.hasScreenshot) {
+              <i class="pi pi-image shot" title="Has a screenshot"></i>
             }
           </span>
           <span class="actions">
@@ -82,8 +104,12 @@
     <ds-empty-state
       icon="pi pi-comments"
       title="Nothing here"
-      [description]="filter() === 'all'
+      [description]="filter() === 'all' && queue() === 'any'
         ? 'Feedback left on your sites will arrive here, with the element and source file it refers to.'
-        : 'No feedback with that status.'" />
+        : queue() === 'me'
+          ? 'Nothing is assigned to you.'
+          : queue() === 'none'
+            ? 'Everything has an owner.'
+            : 'No feedback with that status.'" />
   </div>
 }

@@ -54,6 +54,27 @@ export class ApiClient {
     return this.request<T>('DELETE', path, body);
   }
 
+  /**
+   * Fetch binary content.
+   *
+   * Needed because an `<img src="...">` cannot carry the
+   * `x-organisation-id` header, and every tenant-scoped endpoint requires
+   * it — the browser would send a bare request and `OrgGuard` would answer
+   * 403. The bytes come back as a blob and the caller turns them into an
+   * object URL.
+   */
+  blob(path: string): Observable<Blob> {
+    const organisationId = this.organisationId();
+
+    return this.http
+      .get(`${environment.apiUrl}${path}`, {
+        responseType: 'blob',
+        withCredentials: true,
+        headers: organisationId ? { 'x-organisation-id': organisationId } : {},
+      })
+      .pipe(catchError((error: HttpErrorResponse) => throwError(() => toApiError(error))));
+  }
+
   private request<T>(
     method: string,
     path: string,

@@ -53,6 +53,19 @@ export function getShadowRoot() {
   return root;
 }
 
+/**
+ * The host element itself, for the one case that needs it.
+ *
+ * A screenshot has to be taken with our chrome off the page — otherwise the
+ * picture attached to a comment is a picture of this tool. Hiding the host
+ * hides everything inside the shadow root with it.
+ *
+ * @returns {Element|null} null before the UI has been created
+ */
+export function getShadowHost() {
+  return host;
+}
+
 /** True if the node belongs to our UI rather than the page. */
 export function isOwnUi(el) {
   return Boolean(el.closest?.(`#${HOST_ID}`)) || el.getRootNode?.() === root;

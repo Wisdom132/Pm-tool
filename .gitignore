@@ -32,3 +32,7 @@ npm-debug.log*
 apps/api/generated/
 apps/*/.next/
 apps/*/dist/
+widget/dist/
+# Built by widget/build.js and served from the dashboard's origin, which is
+# what the embed snippet in the site settings points at.
+apps/dashboard/public/widget.js

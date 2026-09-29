@@ -13,6 +13,9 @@ export type Role = 'admin' | 'editor';
 export type EnvironmentLabel = 'production' | 'staging' | 'preview';
 export type FeedbackStatus = 'new' | 'triaged' | 'resolved';
 
+/** How a comment arrived, which decides how far its author is trusted. */
+export type FeedbackSource = 'extension' | 'widget';
+
 // ── auth ─────────────────────────────────────────────────────────
 
 export interface CurrentUser {
@@ -82,7 +85,7 @@ export interface SiteEnvironment {
   /** Null means "read the branch from the page" — what preview deploys need. */
   branch: string | null;
   createdAt: string;
-  site: { id: string; name: string; verifiedAt: string | null };
+  site: { id: string; name: string; verifiedAt: string | null; feedbackWidget: boolean };
   connection: { id: string; provider: Provider; accountLogin: string };
 }
 
@@ -93,6 +96,8 @@ export interface SiteEnvironmentDetail extends Omit<SiteEnvironment, 'site'> {
     name: string;
     verifiedAt: string | null;
     verificationToken: string;
+    /** The public widget. Off until somebody turns it on. */
+    feedbackWidget: boolean;
     createdAt: string;
   };
 }
@@ -109,6 +114,7 @@ export interface CreateSite {
 export interface UpdateSite {
   name?: string;
   branch?: string | null;
+  feedbackWidget?: boolean;
 }
 
 // ── connections ──────────────────────────────────────────────────
@@ -218,12 +224,17 @@ export interface Feedback {
   sourceFile: string | null;
   sourceLine: number | null;
   status: FeedbackStatus;
+  source: FeedbackSource;
   promotedUrl: string | null;
   createdAt: string;
   resolvedAt: string | null;
+  assignedAt: string | null;
+  /** True when there is an image to fetch from `/feedback/:id/screenshot`. */
+  hasScreenshot: boolean;
   site: { id: string; name: string } | null;
   environment: { id: string; hostname: string; label: EnvironmentLabel } | null;
   resolvedBy: { id: string; name: string | null; email: string } | null;
+  assignedTo: { id: string; name: string | null; email: string } | null;
   author: {
     name: string | null;
     email: string | null;
@@ -235,8 +246,18 @@ export interface Feedback {
   userAgent?: string | null;
 }
 
+/**
+ * `mine` and `unassigned` sit alongside the statuses because they are the
+ * two questions somebody opening a shared inbox is actually asking, and a
+ * tab with no number on it is a tab nobody clicks.
+ */
+export type FeedbackCounts = Record<FeedbackStatus | 'mine' | 'unassigned', number>;
+
 export interface FeedbackPage {
   items: Feedback[];
-  counts: Record<FeedbackStatus, number>;
+  counts: FeedbackCounts;
   nextCursor: string | null;
 }
+
+/** A user id, `me`, or `none` for the unassigned queue. */
+export type AssigneeFilter = string;

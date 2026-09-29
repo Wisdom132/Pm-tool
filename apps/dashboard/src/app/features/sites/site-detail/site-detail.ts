@@ -5,6 +5,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Button } from 'primeng/button';
 import { InputText } from 'primeng/inputtext';
 import { Message } from 'primeng/message';
+import { ToggleSwitch } from 'primeng/toggleswitch';
 import { Skeleton } from 'primeng/skeleton';
 import { PageHeader, ErrorState } from '../../../../design-system';
 import { AuditApi } from '../../../core/api/audit-api';
@@ -12,6 +13,7 @@ import { SitesApi } from '../../../core/api/sites-api';
 import { TeamsApi } from '../../../core/api/teams-api';
 import { createLoader } from '../../../core/load-state';
 import { Session } from '../../../core/session';
+import { environment } from '../../../../environments/environment';
 import type { AuditEvent, SiteEnvironmentDetail, Team } from '../../../core/api-types';
 
 /**
@@ -25,7 +27,7 @@ import type { AuditEvent, SiteEnvironmentDetail, Team } from '../../../core/api-
   selector: 'app-site-detail',
   templateUrl: './site-detail.html',
   styleUrl: './site-detail.scss',
-  imports: [DatePipe, FormsModule, RouterLink, Button, InputText, Message, Skeleton, PageHeader, ErrorState],
+  imports: [DatePipe, FormsModule, RouterLink, Button, InputText, Message, Skeleton, ToggleSwitch, PageHeader, ErrorState],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SiteDetail {
@@ -45,6 +47,10 @@ export class SiteDetail {
 
   protected name = '';
   protected branch = '';
+  protected feedbackWidget = false;
+
+  /** Copied, not typed. Getting one character wrong here is a silent failure. */
+  protected readonly copied = signal(false);
 
   constructor() {
     this.reload();
@@ -56,6 +62,7 @@ export class SiteDetail {
         this.loader.set(site);
         this.name = site.site.name;
         this.branch = site.branch ?? '';
+        this.feedbackWidget = site.site.feedbackWidget;
         this.loadRelated(site);
       },
       // Let the loader own the failure path, so the error state renders.
@@ -109,6 +116,52 @@ export class SiteDetail {
           this.message.set({ severity: 'error', text: err.message });
         },
       });
+  }
+
+  /**
+   * The widget's on/off switch, saved on its own.
+   *
+   * Separate from the Save button because it is the off switch: somebody
+   * turning it off is usually doing so because something is wrong, and
+   * making them press Save afterwards is the wrong moment to ask for a
+   * second step.
+   */
+  protected toggleWidget(site: SiteEnvironmentDetail, enabled: boolean) {
+    this.saving.set(true);
+    this.message.set(null);
+
+    this.api.update(site.id, { feedbackWidget: enabled }).subscribe({
+      next: () => {
+        this.saving.set(false);
+        this.feedbackWidget = enabled;
+        this.message.set({
+          severity: 'success',
+          text: enabled
+            ? 'The feedback widget is on for this site.'
+            : 'The feedback widget is off. It stops collecting immediately.',
+        });
+        this.reload();
+      },
+      error: (err: Error) => {
+        this.saving.set(false);
+        // Put the switch back: it must not show "on" for something that
+        // failed to turn on.
+        this.feedbackWidget = !enabled;
+        this.message.set({ severity: 'error', text: err.message });
+      },
+    });
+  }
+
+  /** The tag a customer pastes into their page. */
+  protected embedSnippet(): string {
+    return `<script src="${window.location.origin}/widget.js" data-api="${environment.apiUrl}" defer></script>`;
+  }
+
+  protected copyEmbed() {
+    void navigator.clipboard?.writeText(this.embedSnippet()).then(() => {
+      this.copied.set(true);
+      setTimeout(() => this.copied.set(false), 2000);
+    });
   }
 
   /** A wildcard hostname is not a URL, so there is nothing to open. */

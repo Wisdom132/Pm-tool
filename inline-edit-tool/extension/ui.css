@@ -1684,6 +1684,27 @@
   color: var(--iet-warn);
 }
 
+/* Attaching a picture of somebody's screen is opt-out, not a surprise. */
+.__iet-comment-shot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--iet-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.__iet-comment-shot input {
+  margin: 0;
+  accent-color: var(--iet-accent);
+  cursor: pointer;
+}
+
+.__iet-comment-shot input:disabled {
+  cursor: not-allowed;
+}
+
 .__iet-comment-status {
   margin: 0;
   font-size: 12px;

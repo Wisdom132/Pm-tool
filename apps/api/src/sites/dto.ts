@@ -1,4 +1,5 @@
-import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import {
+  IsBoolean, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { Trim } from '../common/trim';
 
 export class CreateSiteDto {
@@ -23,6 +24,17 @@ export class CreateSiteDto {
   /** Omitted or null means "read the branch from the page" — preview deploys. */
   @IsOptional() @IsString() @MaxLength(255)
   branch?: string | null;
+
+  /**
+   * The public feedback widget.
+   *
+   * Turning it on opens an endpoint that accepts comments and screenshots
+   * from anyone who can load the page, so it is a decision somebody makes
+   * rather than a thing that happens to be true because the site exists.
+   * Turning it off takes effect on the next request — it is the off switch.
+   */
+  @IsOptional() @IsBoolean()
+  feedbackWidget?: boolean;
 }
 
 export class UpdateSiteDto {
@@ -31,6 +43,17 @@ export class UpdateSiteDto {
 
   @IsOptional() @IsString() @MaxLength(255)
   branch?: string | null;
+
+  /**
+   * The public feedback widget.
+   *
+   * Turning it on opens an endpoint that accepts comments and screenshots
+   * from anyone who can load the page, so it is a decision somebody makes
+   * rather than a thing that happens to be true because the site exists.
+   * Turning it off takes effect on the next request — it is the off switch.
+   */
+  @IsOptional() @IsBoolean()
+  feedbackWidget?: boolean;
 }
 
 export class ResolveQueryDto {

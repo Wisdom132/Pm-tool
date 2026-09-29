@@ -11,7 +11,9 @@ import { PrismaService } from '../prisma/prisma.service';
  */
 
 /** Enough to render a site row without a second query. */
-const SITE_SUMMARY = { select: { id: true, name: true, verifiedAt: true } } as const;
+const SITE_SUMMARY = {
+  select: { id: true, name: true, verifiedAt: true, feedbackWidget: true },
+} as const;
 const CONNECTION_SUMMARY = {
   select: { id: true, provider: true, accountLogin: true },
 } as const;
@@ -69,7 +71,7 @@ export class SitesRepository {
       where: { id, organisation: { memberships: { some: { userId } } } },
       include: {
         connection: true,
-        site: { select: { id: true, name: true, verifiedAt: true } },
+        site: { select: { id: true, name: true, verifiedAt: true, feedbackWidget: true } },
       },
     });
   }
@@ -212,14 +214,27 @@ export class SitesRepository {
     hostname: string;
     branch?: string | null;
     name?: string;
+    feedbackWidget?: boolean;
     branchChange: { from: string | null; to: string | null } | null;
+    widgetChange: boolean | null;
   }) {
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.siteEnvironment.update({
         where: { id: params.id },
         data: {
           ...(params.branch !== undefined ? { branch: params.branch } : {}),
-          ...(params.name ? { site: { update: { name: params.name } } } : {}),
+          ...(params.name || params.feedbackWidget !== undefined
+            ? {
+                site: {
+                  update: {
+                    ...(params.name ? { name: params.name } : {}),
+                    ...(params.feedbackWidget !== undefined
+                      ? { feedbackWidget: params.feedbackWidget }
+                      : {}),
+                  },
+                },
+              }
+            : {}),
         },
         include: { site: true },
       });
@@ -235,6 +250,19 @@ export class SitesRepository {
             action: 'branch.changed',
             subject: params.hostname,
             detail: params.branchChange,
+          },
+        });
+      }
+
+      // Opening or closing a public ingest endpoint is worth its own entry.
+      // "Who turned this on" is the first question asked after a flood.
+      if (params.widgetChange !== null) {
+        await tx.auditEvent.create({
+          data: {
+            organisationId: params.organisationId,
+            actorUserId: params.userId,
+            action: params.widgetChange ? 'widget.enabled' : 'widget.disabled',
+            subject: params.hostname,
           },
         });
       }
