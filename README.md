@@ -8,17 +8,35 @@ PMs, designers reviewing a staging build. They edit what they see; the tool
 works out which file to change and opens a PR for a developer to merge.
 
 ```
-  preview deploy                 browser extension                  API
- ┌────────────────┐            ┌──────────────────┐         ┌──────────────┐
- │ data-edit-file │──stamped──▶│ click, type,     │──POST──▶│ codemod →    │
- │ data-edit-line │  at build  │ review           │         │ branch → PR  │
- │ data-edit-col  │            └──────────────────┘         └──────┬───────┘
- └────────────────┘                                                │
-        ▲                                     ┌──────────────┐     ▼
-        └───────── annotation plugin           │  dashboard   │  GitHub App
-                                               │ sites, teams │──installed
-                                               │ connections  │  per org
-                                               └──────────────┘
+                        ┌─── build time ───┐
+   your repository ────▶│ annotation plugin│────▶  preview deploy
+                        └──────────────────┘       data-edit-file
+                                                   data-edit-line
+                                                   data-edit-col
+                                                          │
+                     who is looking at that page?         │
+        ┌─────────────────────────────────────────────────┴───┐
+        │                                                     │
+ ┌──────▼───────┐                                    ┌────────▼────────┐
+ │  extension   │  your team                         │     widget      │  everyone else
+ │  edit · move │  signed in, can change things      │  comment only   │  no account
+ │  comment     │                                    │                 │
+ └──────┬───────┘                                    └────────┬────────┘
+        │                                                     │
+        └──────────────────────┬──────────────────────────────┘
+                               ▼
+                      ┌─────────────────┐
+                      │       API       │  codemod → branch → pull request
+                      │  sites · teams  │  feedback → inbox
+                      │  connections    │
+                      └───┬─────────┬───┘
+                          │         │
+                 ┌────────▼───┐  ┌──▼──────────┐
+                 │ dashboard  │  │ GitHub App  │
+                 │ inbox,     │  │ installed   │
+                 │ sites,     │  │ per org     │
+                 │ people     │  └─────────────┘
+                 └────────────┘
 ```
 
 The page no longer says which repository it belongs to. It says which
@@ -43,15 +61,89 @@ an issue. It will not guess and commit.
 
 ---
 
+## The parts
+
+Five pieces, each doing one job. The first is the reason any of the rest
+works.
+
+### 1. Annotation plugins — `annotation/`
+
+Build-time plugins for **React, Vue, Svelte and Angular**. They stamp
+`data-edit-file`, `data-edit-line` and `data-edit-col` onto the DOM, so the
+heading you clicked can be traced to `src/components/Hero.tsx:12`.
+
+Inert unless `INLINE_EDIT` is set. Annotations describe your source layout,
+so they must never reach production — CI enforces that.
+
+This is the part everything else depends on, and the part worth reading
+first if you are going to read one.
+
+### 2. The extension — `inline-edit-tool/extension/`
+
+Chrome MV3, for **your team**: people who are signed in and allowed to change
+things. A tool rail down the side of any annotated page.
+
+| Tool | What it does |
+|---|---|
+| **Inspect** | Hover to see where anything came from; click for full detail |
+| **Edit text** | Click any text and rewrite it in place |
+| **Properties** | Links, alt text and classes |
+| **Rearrange** | Move, duplicate or delete an element |
+| **Comment** | Leave a note instead of a change — pinned to the source line |
+
+Edits persist across navigation, so you can walk several pages of a preview
+and submit them as one pull request.
+
+### 3. The widget — `widget/`
+
+One script tag, for **everyone else**: a client reviewing staging, a customer
+who spotted a typo, a tester who will never install anything. No account, no
+sign-in.
+
+```html
+<script src="https://your-dashboard/widget.js"
+        data-api="https://your-api/api" defer></script>
+```
+
+Comment only — it cannot change anything. But a comment left through it
+carries the same element and source line the extension's would, without the
+person leaving it knowing any of that exists.
+
+14KB, no dependencies, and **off by default per site**: switching it on opens
+an endpoint anyone can post to, so that is a decision somebody makes rather
+than a consequence of registering a site.
+
+### 4. The API — `apps/api/`
+
+NestJS and Postgres. Accounts, organisations, teams, provider connections,
+the site registry, the codemods, and the feedback inbox.
+
+Every database call lives in a `*.repository.ts`, every query is
+organisation-scoped, and the client never names a repository — it names a
+site environment, and the registry derives the rest.
+
+### 5. The dashboard — `apps/dashboard/`
+
+Angular. Where an admin connects GitHub and registers sites, and where
+everybody reads the **feedback inbox**: triage a comment, give it an owner,
+and turn it into an issue on the repository behind that site — carrying the
+page, the element and the source line across.
+
+---
+
 ## Repository layout
 
 | Path | What it is |
 |------|------------|
-| `annotation/` | Build plugins for React, Vue and Angular. Stamp `data-edit-*` onto the DOM. |
+| `annotation/` | Build plugins: React, Vue, Svelte, Angular, plus a Nuxt module. |
 | `inline-edit-tool/extension/` | Chrome MV3 extension: tool rail, inline editing, review panel. |
-| `apps/api/` | NestJS API: accounts, sites, provider connections, codemods, opens PRs. |
-| `apps/dashboard/` | Angular dashboard: sign-in, sites, teams, connections. |
+| `widget/` | The embeddable public feedback widget. One file, no dependencies. |
+| `apps/api/` | NestJS API: accounts, sites, connections, codemods, feedback. |
+| `apps/dashboard/` | Angular dashboard: sites, people, teams, the feedback inbox. |
+| `examples/` | One minimal app per framework, used by the annotation tests. |
+| `scripts/` | Preview server, environment checks, CI guards. |
 | `tests/` | Unit tests (Vitest) and end-to-end tests (Playwright). |
+| `docs/` | Deployment and operational notes. |
 
 ---
 
@@ -105,9 +197,6 @@ Then `chrome://extensions` → Developer mode → **Load unpacked** →
 Open the popup and set the service URL. Anything other than `localhost` must
 be `https://` — the extension sends a bearer token to that origin.
 
-> **Note:** the extension still speaks the old service's protocol and has not
-> yet been repointed at `/api/editing/*`. See `TASK.md`.
-
 ### 2b. The dashboard
 
 ```bash
@@ -115,7 +204,27 @@ npm run dev:dashboard    # → http://localhost:4200
 ```
 
 Sign in, connect GitHub, then register a site: `hostname → repository →
-branch`. That mapping is what the extension resolves against.
+branch`. That mapping is what the extension and the widget both resolve
+against.
+
+The dashboard is also where feedback lands. **Feedback →** a comment, who
+owns it, and a button that opens an issue on the repository behind its site.
+
+### 2c. The public widget (optional)
+
+Only if you want people without accounts to be able to comment.
+
+```bash
+npm run build:widget     # also copies it into the dashboard's assets
+```
+
+Then in the dashboard, open the site and switch **Public feedback widget**
+on. It is off by default, and it will not collect anything until the site's
+domain is verified — otherwise anyone could register `yourdomain.com` and
+receive feedback meant for you.
+
+The dashboard shows the exact tag to paste, which is one line and needs no
+site id.
 
 ### 3. The annotation plugin
 
@@ -129,8 +238,10 @@ see `scripts/check-no-annotations.mjs`.
 
 ## Annotation plugins
 
-All three stamp the same attributes and are inert unless `INLINE_EDIT` is
-truthy (or you are running a dev server).
+All four stamp the same attributes and are inert unless `INLINE_EDIT` is
+truthy (or you are running a dev server). A parity test runs equivalent
+markup through every one of them, because they had silently diverged once
+and nothing caught it.
 
 <details>
 <summary><b>React / Next.js</b></summary>
@@ -157,8 +268,6 @@ export default {
 };
 ```
 
-Also detects `{t('hero.title')}` and records the key, so translated copy is
-patched in the locale file rather than the component.
 </details>
 
 <details>
@@ -182,6 +291,20 @@ export default defineNuxtConfig({ vite: { plugins: [inlineEdit()] } });
 </details>
 
 <details>
+<summary><b>Svelte / SvelteKit</b></summary>
+
+`vite.config.js`:
+
+```js
+import inlineEdit from './annotation/svelte/index.js';
+
+export default { plugins: [inlineEdit(), sveltekit()] };
+```
+
+Before `sveltekit()`, so it sees the markup rather than the compiled output.
+</details>
+
+<details>
 <summary><b>Angular</b></summary>
 
 Requires `@angular-builders/custom-webpack`:
@@ -202,6 +325,22 @@ ng add @angular-builders/custom-webpack
 ```
 </details>
 
+### Translated copy
+
+Text rendered through a translation function has no literal in the component,
+so patching the component would be wrong twice over — the words are not there
+to change, and the other languages would drift from the source one.
+
+All four plugins recognise the idiom and record the key as
+`data-edit-i18n-key`: `t('k')`, `$t('k')`, `i18n.t('k')`, `$_('k')`, and
+Angular's `'k' | translate`. The edit is then redirected to the locale file
+that actually holds the text.
+
+Anything it cannot read back as a literal key — a computed key, a template
+literal, a conditional — is refused rather than guessed. A wrong key lands
+the edit in the wrong entry of a locale file, and nothing in the resulting
+pull request would look out of place.
+
 ### Build metadata
 
 The plugins also stamp the branch, commit and repository onto `<html>`, read
@@ -218,19 +357,25 @@ Override with `INLINE_EDIT_BRANCH`, `INLINE_EDIT_COMMIT`, `INLINE_EDIT_REPO`.
 
 ## Using it
 
+The five tools are listed under **The parts**, above. Alongside them in the
+rail:
+
 | | |
 |---|---|
-| **Crosshair** | Hover to see where text comes from; click for full detail |
-| **Pencil** | Click any text to rewrite it |
-| **Grid** | Toggle alignment guides |
-| **Changes / PR** | Review everything and open a pull request |
+| **Guides** | Toggle alignment guides |
+| **Changes** | Review everything pending and open a pull request |
 | **IE badge** | Move the rail to the other side |
 
-`e` and `i` switch tools, `⌘Z` / `⇧⌘Z` undo and redo.
+`i` and `e` toggle Inspect and Edit; `⌘Z` / `⇧⌘Z` undo and redo.
 
 Edits persist across navigation, so you can walk several pages of a preview
 and submit them as one pull request. The side panel lists everything pending
 and lets you discard individual edits.
+
+**Comment is the odd one out.** It changes nothing and stages nothing — it
+files a note to the dashboard inbox, pinned to the element and, where the
+page is annotated, to the source line. It is there for the person who has
+noticed something but should not or cannot change it themselves.
 
 ### What it does with a stale preview
 
@@ -248,9 +393,23 @@ npm install              # root + workspaces (apps/api, apps/dashboard)
 npm run install:all      # extension dependencies
 
 npm run dev              # extension watcher + API together
+npm run dev:dashboard    # dashboard (builds the widget first)
+npm run build:widget     # the embeddable widget on its own
+
 npm test                 # unit tests
 npm run test:e2e         # Playwright, against the real build
 npm run preview          # demo page
+```
+
+Some behaviour only holds across the real request pipeline — a guard, the
+validation pipe, a resolver and the database, in that order. Those live in
+`apps/api/test/*.sh` and run against a local API:
+
+```bash
+npm run dev:api                          # in one terminal
+bash apps/api/test/feedback-public.sh    # the public endpoint and its gates
+bash apps/api/test/feedback-inbox.sh     # triage, ownership, promotion
+bash apps/api/test/editing-access.sh     # who may edit what
 ```
 
 `scripts/screenshot-ui.mjs` captures every UI state — the chrome lives in a
@@ -284,5 +443,28 @@ the platform roadmap and what is deliberately not done.
 - Pull requests are opened by the GitHub App with the editor named by display
   name, never by email address: a change request can land in a public
   repository.
+
+**The public widget** is the one endpoint an unauthenticated stranger can
+reach, and it accepts an image, so it is worth stating what stands in front
+of it:
+
+- **Off by default, per site**, and the domain must be **verified**. Without
+  that second check anyone could register your hostname and collect feedback
+  meant for you. Turning it off takes effect on the next request.
+- **Per-address and per-site rate limits.** The second is not redundant: a
+  flood spread across many addresses defeats the first entirely.
+- The **page URL must be on the site's own hostname**, so a comment cannot be
+  filed against a real site while naming any URL at all.
+- Screenshots are checked against **magic bytes**, never their declared type.
+  Believing the label is how an upload endpoint becomes a way to host
+  arbitrary content on someone else's origin. SVG is refused outright.
+- Visitor addresses are stored as a **salted hash**. An unsalted hash of an
+  IPv4 address is reversible by brute force in seconds.
+- Every refusal gives the **same message**. A stranger cannot tell
+  "unregistered" from "unverified" from "switched off", which would otherwise
+  be free reconnaissance.
+- It sends **no credentials**, which is what makes its open CORS policy safe
+  rather than a hole — there is no ambient authority for a hostile page to
+  borrow. The authenticated routes keep their origin allowlist.
 
 Report anything you find privately rather than opening an issue.
