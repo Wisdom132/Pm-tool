@@ -108,22 +108,31 @@ describe('annotateSource', () => {
     expect(annotateSource(src, FILE)).toBe(src);
   });
 
-  it('skips an element that holds an expression', () => {
+  it('does not offer an element holding an expression for editing', () => {
     // `{count}` is a value the component computes; there is no copy to edit.
-    expect(annotateSource('<p>{count} deploys</p>', FILE)).toBe('<p>{count} deploys</p>');
+    // It is the root here, so it still carries provenance.
+    const out = annotateSource('<p>{count} deploys</p>', FILE);
+    expect(out).not.toContain('data-editable');
+    expect(out).toContain('data-edit-file');
   });
 
-  it('skips an element with child elements', () => {
-    const src = '<p>Read our <a href="/x">guide</a></p>';
-    // The <a> is annotated on its own; the <p> is not, because rewriting its
-    // text would delete the link.
-    const out = annotateSource(src, FILE);
-    expect(attrsOf(out, 'a')).toBeTruthy();
+  it('skips a nested element holding an expression entirely', () => {
+    const out = annotateSource('<div>Copy<p>{count} deploys</p></div>', FILE);
     expect(/<p\s+data-edit-file/.test(out)).toBe(false);
   });
 
-  it('skips empty and self-closing elements', () => {
-    expect(annotateSource('<p></p>', FILE)).toBe('<p></p>');
+  it('does not offer an element with child elements for editing', () => {
+    const src = '<div><p>Read our <a href="/x">guide</a></p></div>';
+    // The <a> is editable on its own; the <p> is not, because rewriting its
+    // text would delete the link.
+    const out = annotateSource(src, FILE);
+    expect(attrsOf(out, 'a')).toBeTruthy();
+    expect(/<p\s+[^>]*data-editable/.test(out)).toBe(false);
+  });
+
+  it('does not offer empty or self-closing elements for editing', () => {
+    expect(annotateSource('<p></p>', FILE)).not.toContain('data-editable');
+    // Self-closing has no children to inherit provenance, so it stays bare.
     expect(annotateSource('<p />', FILE)).toBe('<p />');
   });
 
@@ -159,11 +168,13 @@ describe('annotateSource', () => {
     expect(out).toContain('title="a > b"');
   });
 
-  it('annotates the inner of two nested spans, not a broken range', () => {
+  it('offers the inner of two nested spans, not a broken range', () => {
     const out = annotateSource('<span>outer <span>inner</span></span>', FILE);
-    // The outer span has a child element, so only the inner one qualifies.
-    expect(out.match(/data-edit-file/g)).toHaveLength(1);
-    expect(out).toContain('<span data-edit-file');
+    // The outer span has a child element, so rewriting its text would
+    // delete the inner one — only the inner is editable. The outer is the
+    // root, so it still carries provenance.
+    expect(out.match(/data-editable/g)).toHaveLength(1);
+    expect(out.match(/data-edit-file/g)).toHaveLength(2);
   });
 });
 
@@ -199,12 +210,20 @@ describe('annotation and codemod agree', () => {
   function annotatedElements(output) {
     return [...output.matchAll(/<(\w+)([^>]*data-edit-file[^>]*)>/g)].map(([, tag, attrs]) => {
       const get = (name) => new RegExp(`${name}="([^"]*)"`).exec(attrs)?.[1];
-      return { tag, file: get('data-edit-file'), line: Number(get('data-edit-line')) };
+      return {
+        tag,
+        file: get('data-edit-file'),
+        line: Number(get('data-edit-line')),
+        editable: attrs.includes('data-editable'),
+      };
     });
   }
 
-  it('annotates exactly the elements that hold editable copy', () => {
-    const found = annotatedElements(annotateSource(component, FILE));
+  /** Only the elements the codemod is actually offered. */
+  const editableElements = (output) => annotatedElements(output).filter((e) => e.editable);
+
+  it('offers exactly the elements that hold editable copy', () => {
+    const found = editableElements(annotateSource(component, FILE));
 
     expect(found.map((f) => `${f.tag}:${f.line}`)).toEqual([
       'h1:7',
@@ -222,7 +241,9 @@ describe('annotation and codemod agree', () => {
     );
 
     const annotated = annotateSource(component, FILE);
-    const elements = annotatedElements(annotated);
+    // Only the editable ones: a root carries provenance without any text
+    // for the codemod to find.
+    const elements = editableElements(annotated);
     expect(elements.length).toBeGreaterThan(0);
 
     // The codemod runs against the *original* file, which is what is in the

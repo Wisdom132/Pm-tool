@@ -5,6 +5,7 @@ import { AuthRepository } from './auth.repository';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { MailerService } from './mailer.service';
+import { RateLimitGuard } from '../common/rate-limit.guard';
 
 @Module({
   controllers: [AuthController],
@@ -12,6 +13,7 @@ import { MailerService } from './mailer.service';
     AuthService,
     AuthRepository,
     MailerService,
+    RateLimitGuard,
     // Global, so routes are protected by default and opting out is explicit.
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

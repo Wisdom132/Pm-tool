@@ -1,6 +1,8 @@
 import { ArrayMaxSize, IsArray, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { Trim } from '../common/trim';
 
 export class CreateTeamDto {
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(80)
@@ -8,6 +10,7 @@ export class CreateTeamDto {
 }
 
 export class RenameTeamDto {
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(80)

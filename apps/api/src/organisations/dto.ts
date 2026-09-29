@@ -1,6 +1,8 @@
 import { IsString, MaxLength, MinLength } from 'class-validator';
+import { Trim } from '../common/trim';
 
 export class RenameOrganisationDto {
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(120)

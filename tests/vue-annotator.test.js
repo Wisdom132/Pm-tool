@@ -92,6 +92,16 @@ describe('which elements the Vue plugin annotates', () => {
   const annotated = (code) =>
     [...code.matchAll(/<(\w+)[^>]*data-edit-file/g)].map((m) => m[1]);
 
+  /**
+   * Tags the codemod is offered, in document order.
+   *
+   * Not the same set as `annotated`: a component root carries provenance
+   * without being editable, so that an image inside it has something to
+   * inherit. These tests are about what may be *edited*.
+   */
+  const editable = (code) =>
+    [...code.matchAll(/<(\w+)[^>]*data-editable/g)].map((m) => m[1]);
+
   it('annotates a div that holds only text', () => {
     // The case that matters on a Tailwind codebase: headings and copy are
     // divs, and none of them used to be reachable.
@@ -113,7 +123,8 @@ describe('which elements the Vue plugin annotates', () => {
   });
 
   it('still leaves an element with no literal text of its own', () => {
-    expect(annotated(transform('  <p>{{ count }}</p>'))).toEqual([]);
+    // An interpolation is not copy the codemod can rewrite.
+    expect(editable(transform('  <p>{{ count }}</p>'))).toEqual([]);
   });
 
   it('still annotates the usual text tags', () => {
@@ -121,15 +132,91 @@ describe('which elements the Vue plugin annotates', () => {
     expect(annotated(code)).toEqual(['h1', 'p', 'a']);
   });
 
-  it('leaves a pure container alone', () => {
+  it('does not offer a pure container for editing', () => {
+    // It carries provenance as the template root — that is how an image
+    // inside it finds a file — but there is no text to rewrite.
     const code = transform('  <div class="grid">\n    <p>Body</p>\n  </div>');
-    expect(annotated(code)).toEqual(['p']);
+    expect(editable(code)).toEqual(['p']);
+    expect(annotated(code)).toEqual(['div', 'p']);
   });
 
   it('treats whitespace between elements as insignificant', () => {
     // A container's text children are newlines and indentation. Counting
-    // those as copy would annotate every wrapper on the page.
+    // those as copy would offer an edit on every wrapper on the page.
     const code = transform('  <div>\n\n    <p>Body</p>\n\n  </div>');
-    expect(annotated(code)).toEqual(['p']);
+    expect(editable(code)).toEqual(['p']);
+  });
+});
+
+// ============================================================
+//  Provenance is wider than the editing contract
+//
+//  These are two different claims and were once emitted together:
+//
+//    data-editable   the codemod can rewrite this. Narrow, because
+//                    offering an edit that fails at pull-request
+//                    time is worse than not offering it.
+//    data-edit-file  this came from here. Wider, because an image
+//                    has no text to edit but still came from
+//                    somewhere — and without it the Inspect and
+//                    Comment tools could say nothing about any
+//                    image, icon or wrapper on the page.
+// ============================================================
+describe('provenance versus the editing contract', () => {
+  const transform = (template) => {
+    process.env.INLINE_EDIT = '1';
+    const plugin = vuePlugin();
+    plugin.configResolved({ command: 'build', mode: 'production' });
+    const out = plugin.transform(`<template>\n${template}\n</template>`, '/tmp/X.vue');
+    return out ? out.code : `<template>\n${template}\n</template>`;
+  };
+
+  /** Tags carrying provenance, and whether each is also editable. */
+  const marks = (code) =>
+    [...code.matchAll(/<(\w+)((?:\s+[a-z-]+="[^"]*")*)/g)]
+      .filter((m) => m[2].includes('data-edit-file'))
+      .map((m) => ({ tag: m[1], editable: m[2].includes('data-editable') }));
+
+  it('annotates a component root that holds no text at all', () => {
+    // The reported case: a footer of images and icons, where nothing up the
+    // tree carried an annotation, so every comment said "no build
+    // annotation" and named no file.
+    const code = transform('  <section class="downloads">\n    <img src="/play.svg" />\n  </section>');
+    expect(marks(code)).toEqual([{ tag: 'section', editable: false }]);
+  });
+
+  it('does not offer to edit that root', () => {
+    // It has no text, so the codemod cannot rewrite it. Claiming otherwise
+    // would produce an edit that fails at pull-request time.
+    const code = transform('  <div class="wrap">\n    <img src="/a.svg" />\n  </div>');
+    expect(code).toContain('data-edit-file');
+    expect(code).not.toContain('data-editable');
+  });
+
+  it('still marks a root that does hold text as editable', () => {
+    const code = transform('  <div>Focus on the things you love</div>');
+    expect(marks(code)).toEqual([{ tag: 'div', editable: true }]);
+  });
+
+  it('gives an image an ancestor to inherit from', () => {
+    // What the Comment and Inspect tools walk up to find.
+    const code = transform('  <section>\n    <div class="row">\n      <img src="/a.svg" />\n    </div>\n  </section>');
+    expect(marks(code).length).toBeGreaterThan(0);
+    expect(code.indexOf('data-edit-file')).toBeLessThan(code.indexOf('<img'));
+  });
+
+  it('annotates every root when a template has several', () => {
+    const code = transform('  <img src="/a.svg" />\n  <img src="/b.svg" />');
+    expect(marks(code)).toEqual([
+      { tag: 'img', editable: false },
+      { tag: 'img', editable: false },
+    ]);
+  });
+
+  it('leaves a component root alone, since it renders elsewhere', () => {
+    // A capitalised tag hands its children to something else; annotating
+    // here would point at the wrong element.
+    const code = transform('  <AppHeader>\n    <img src="/a.svg" />\n  </AppHeader>');
+    expect(code).not.toContain('data-edit-file');
   });
 });

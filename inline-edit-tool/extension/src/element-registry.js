@@ -127,9 +127,39 @@ export function editableAncestors(el, isEditable) {
 /** Short label for a breadcrumb entry. */
 export function describeElement(el) {
   const tag = el.tagName.toLowerCase();
+
   const text = (el.textContent || "").trim().replace(/\s+/g, " ");
-  if (!text) return tag;
-  return `${tag} · ${text.length > 24 ? `${text.slice(0, 24)}…` : text}`;
+  if (text) return `${tag} · ${text.length > 24 ? `${text.slice(0, 24)}…` : text}`;
+
+  // No text is the normal case for an image, an icon or a decorated
+  // wrapper, and a bare "img" tells a reader nothing about which one was
+  // meant — which matters most when they are looking at a comment somebody
+  // else left days ago.
+  const label = labelWithoutText(el);
+  return label ? `${tag} · ${label.length > 24 ? `${label.slice(0, 24)}…` : label}` : tag;
+}
+
+/** Whatever names an element that has no text of its own. */
+function labelWithoutText(el) {
+  const attr = (name) => el.getAttribute?.(name)?.trim();
+
+  // Alt text first: it is the one written *for* a human.
+  return (
+    attr("alt") ||
+    attr("aria-label") ||
+    attr("title") ||
+    fileNameOf(attr("src")) ||
+    attr("name") ||
+    attr("placeholder") ||
+    ""
+  );
+}
+
+/** "…/images/hero-laundry.webp?v=2" → "hero-laundry.webp" */
+function fileNameOf(src) {
+  if (!src || src.startsWith("data:")) return "";
+  const path = src.split(/[?#]/)[0];
+  return path.slice(path.lastIndexOf("/") + 1);
 }
 
 /**

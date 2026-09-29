@@ -16,17 +16,20 @@
   cursor: pointer;
 }
 
-/* Pointing at it. Violet: "this is what you would act on". */
+/* Pointing at it: "this is what you would act on". */
 .__iet-hovered {
-  outline: 2px solid #a855f7 !important;
+  outline: 2px solid #22d3ee !important;
   outline-offset: 2px !important;
   border-radius: 2px;
 }
 
-/* Acting on it. Magenta matches the active tool in the rail. */
+/* Acting on it. The same hue, because a darker shade would be harder to
+   see on a dark site and this has to be the strongest thing on screen —
+   so the ring carries the difference instead of a second colour. */
 .__iet-editing {
-  outline: 2px solid #ec4899 !important;
+  outline: 2px solid #22d3ee !important;
   outline-offset: 2px !important;
+  box-shadow: 0 0 0 5px rgba(34, 211, 238, 0.28) !important;
   border-radius: 2px;
 }
 

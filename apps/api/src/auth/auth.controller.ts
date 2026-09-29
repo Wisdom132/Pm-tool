@@ -1,12 +1,26 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { CreateExtensionTokenDto, RequestLinkDto, UpdateProfileDto, VerifyDto } from './dto';
 import { Public } from './public.decorator';
 import { SESSION_COOKIE } from './auth.guard';
 import { CurrentSession, Session } from './session.decorator';
+import { RateLimit, RateLimitGuard } from '../common/rate-limit.guard';
 
 @Controller('auth')
+@UseGuards(RateLimitGuard)
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
@@ -36,6 +50,26 @@ export class AuthController {
     });
 
     return { user: { id: user.id, email: user.email, name: user.name } };
+  }
+
+  /**
+   * What an invitation link is offering.
+   *
+   * Public and rate-limited: the holder may have no account yet, and a
+   * public lookup keyed on a token is worth guessing at.
+   */
+  @Public()
+  @RateLimit('read')
+  @Get('invitations/:token')
+  describeInvitation(@Param('token') token: string) {
+    return this.auth.describeInvitation(token);
+  }
+
+  /** Accept it as whoever is signed in. The addresses must match. */
+  @RateLimit('write')
+  @Post('invitations/:token/accept')
+  acceptInvitation(@Session() session: CurrentSession, @Param('token') token: string) {
+    return this.auth.acceptInvitation(token, session.userId, session.email);
   }
 
   /** Who am I, and what can I see. The dashboard calls this on boot. */

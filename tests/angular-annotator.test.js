@@ -28,7 +28,9 @@ describe('annotateSource', () => {
 
   it('reports 1-based line numbers', () => {
     const out = annotateSource('<div>\n  <h1>Hi</h1>\n</div>', FILE, 'angular');
-    expect(attr(out, 'data-edit-line')).toBe('2');
+    // The <div> is the template root and carries provenance, so read the
+    // line off the element that is actually editable.
+    expect(/<h1 [^>]*data-edit-line="2"/.test(out)).toBe(true);
   });
 
   it('applies the lineOffset for inline templates', () => {
@@ -47,14 +49,23 @@ describe('annotateSource', () => {
     expect(/<p [^>]*data-edit-line="2"/.test(out)).toBe(true);
   });
 
-  it('skips elements with no direct text', () => {
+  it('does not offer an element with no direct text for editing', () => {
+    // It is the root, so it carries provenance — that is how the image
+    // inside it finds a file — but there is nothing to rewrite.
     const out = annotateSource('<p><img src="a.png"></p>', FILE, 'angular');
-    expect(out).not.toContain('data-edit-file');
+    expect(out).not.toContain('data-editable');
+    expect(out).toContain('data-edit-file');
   });
 
-  it('skips whitespace-only elements', () => {
+  it('skips a nested element with no direct text entirely', () => {
+    // Not a root, nothing to edit: no reason to be in the markup at all.
+    const out = annotateSource('<div>Copy<section><img src="a.png"></section></div>', FILE, 'angular');
+    expect(/<section [^>]*data-edit-file/.test(out)).toBe(false);
+  });
+
+  it('does not offer a whitespace-only element for editing', () => {
     const out = annotateSource('<p>   \n  </p>', FILE, 'angular');
-    expect(out).not.toContain('data-edit-file');
+    expect(out).not.toContain('data-editable');
   });
 
   it('skips self-closing tags', () => {
@@ -62,9 +73,22 @@ describe('annotateSource', () => {
     expect(out).not.toContain('data-edit-file');
   });
 
-  it('skips tags that are not text-bearing', () => {
-    const out = annotateSource('<section>Hello</section>', FILE, 'angular');
-    expect(out).not.toContain('data-edit-file');
+  it('annotates any tag holding copy, not a fixed list of them', () => {
+    // This asserted the opposite while the plugin used an allowlist of
+    // p/h1-h6/span/a/button/label/li/td/th/strong/em/small/b/i. A <section>
+    // or a <div> holding copy is copy, and on a utility-class codebase that
+    // is most of the page. The contents decide, not the tag name.
+    for (const tag of ['section', 'div', 'article', 'figcaption', 'blockquote']) {
+      const out = annotateSource(`<${tag}>Hello</${tag}>`, FILE, 'angular');
+      expect(out, tag).toContain('data-editable="true"');
+    }
+  });
+
+  it('still ignores tags whose text is never page copy', () => {
+    for (const tag of ['script', 'style', 'title']) {
+      const out = annotateSource(`<${tag}>x</${tag}>`, FILE, 'angular');
+      expect(out, tag).not.toContain('data-edit-file');
+    }
   });
 
   it('is idempotent', () => {
@@ -90,7 +114,8 @@ describe('annotateSource', () => {
   });
 
   it('returns the source unchanged when nothing qualifies', () => {
-    const src = '<div><section>x</section></div>';
+    // No elements at all, so no root to carry provenance either.
+    const src = 'Just some text with no markup.';
     expect(annotateSource(src, FILE, 'angular')).toBe(src);
   });
 });
@@ -131,5 +156,57 @@ export class HeroComponent {}`;
   it('is idempotent', () => {
     const once = annotateInlineTemplates(TS, 'src/app/hero.component.ts');
     expect(annotateInlineTemplates(once, 'src/app/hero.component.ts')).toBe(once);
+  });
+});
+
+// ============================================================
+//  Columns
+//
+//  The extension builds an element's identity from
+//  file:line:col (`editKey`). Without a column, two elements
+//  on one line produced the *same* key — so editing one and
+//  then the other collided in the edit session, and a
+//  structural edit matched whichever came first.
+//
+//  0-based, matching `element-range.js`, because an Angular
+//  template is edited by the HTML codemod. Vue's is 1-based
+//  and right for Vue: it comes from @vue/compiler-dom, and its
+//  codemod compares against that same parser. Nothing compares
+//  a column across frameworks.
+// ============================================================
+describe('columns', () => {
+  const cols = (code) => [...code.matchAll(/data-edit-col="(\d+)"/g)].map((m) => Number(m[1]));
+
+  it('distinguishes two elements on the same line', () => {
+    const out = annotateSource('<div><span>One</span><span>Two</span></div>', FILE, 'angular');
+    const [first, second] = cols(out);
+    expect(first).not.toBe(second);
+  });
+
+  it('is 0-based, like the HTML codemod it is edited by', () => {
+    expect(cols(annotateSource('<p>Hi</p>', FILE, 'angular'))).toEqual([0]);
+  });
+
+  it('counts from the start of the line, not the file', () => {
+    const out = annotateSource('<div>\n  <p>Hi</p>\n</div>', FILE, 'angular');
+    // The root <div> at column 0, then <p> after two spaces of indent.
+    expect(cols(out)).toEqual([0, 2]);
+  });
+
+  it('gives every element on a line a distinct key', () => {
+    // What editKey is built from: file:line:col.
+    const out = annotateSource('<b>A</b><i>B</i><u>C</u>', FILE, 'angular');
+    const keys = [...out.matchAll(/data-edit-line="(\d+)" data-edit-col="(\d+)"/g)].map(
+      (m) => `${m[1]}:${m[2]}`
+    );
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('matches where the element actually starts', () => {
+    // The column has to point at the '<', because that is what the codemod
+    // compares against when it scans the source.
+    const source = '<div>\n      <h1>Title</h1>\n</div>';
+    const out = annotateSource(source, FILE, 'angular');
+    expect(cols(out)).toEqual([0, source.split('\n')[1].indexOf('<h1>')]);
   });
 });

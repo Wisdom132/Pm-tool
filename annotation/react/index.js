@@ -119,7 +119,15 @@ module.exports = function babelPluginInlineEditAnnotation({ types: t }) {
         // file, so it is reachable even though the element holds no literal.
         const i18nKey = editableText ? null : translationKey(children, t);
 
-        if (!editableText && !i18nKey) return;
+        // The outermost JSX element of a tree — a component's returned
+        // root, or one handed to a prop. Nothing above it in this file
+        // carries an annotation, so without one an image, an icon or a
+        // wrapper inside it has no ancestor to inherit a file from, and
+        // Inspect and Comment can name no source for it.
+        const parent = jsxElement.parent ?? jsxPath.parentPath?.parent;
+        const isRoot = !t.isJSXElement(parent) && !t.isJSXFragment(parent);
+
+        if (!editableText && !i18nKey && !isRoot) return;
 
         // Source location
         const loc = jsxPath.node.loc;
@@ -139,9 +147,17 @@ module.exports = function babelPluginInlineEditAnnotation({ types: t }) {
           t.jsxAttribute(t.jsxIdentifier('data-edit-file'), t.stringLiteral(filePath)),
           t.jsxAttribute(t.jsxIdentifier('data-edit-line'), t.stringLiteral(String(loc.start.line))),
           t.jsxAttribute(t.jsxIdentifier('data-edit-col'), t.stringLiteral(String(loc.start.column))),
-          t.jsxAttribute(t.jsxIdentifier('data-editable'), t.stringLiteral('true')),
           t.jsxAttribute(t.jsxIdentifier('data-edit-framework'), t.stringLiteral('react'))
         );
+
+        // `data-editable` is the editing contract — the codemod can rewrite
+        // this. `data-edit-file` above is provenance — this came from here.
+        // A root with no text of its own gets the second and not the first.
+        if (editableText || i18nKey) {
+          attrs.push(
+            t.jsxAttribute(t.jsxIdentifier('data-editable'), t.stringLiteral('true'))
+          );
+        }
 
         if (i18nKey) {
           attrs.push(

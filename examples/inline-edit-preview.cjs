@@ -162,12 +162,17 @@ module.exports = function inlineEditPreview({
             );
             return;
           }
+          res.setHeader('Cache-Control', 'no-store');
           res.setHeader('Content-Type', asset.type);
           res.end(fs.readFileSync(asset.file));
           return;
         }
 
         if (url === '/__iet/shim.js') {
+          // Never cached: the shim is generated from this file, and a browser
+          // holding yesterday's copy is indistinguishable from the plugin not
+          // having been updated — which cost a debugging session once.
+          res.setHeader('Cache-Control', 'no-store');
           res.setHeader('Content-Type', 'text/javascript');
           res.end(shimSource({ repo, branch, autoOpen }));
           return;
@@ -180,6 +185,7 @@ module.exports = function inlineEditPreview({
         // means the Locate flow works without the service running.
         if (url === '/__iet/locate') {
           const text = new URLSearchParams(query || '').get('text') || '';
+          res.setHeader('Cache-Control', 'no-store');
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify(locateText(root, text)));
           return;
@@ -189,6 +195,7 @@ module.exports = function inlineEditPreview({
           const wanted = new URLSearchParams(query || '').get('path') || '';
           const content = readProjectFile(root, wanted);
 
+          res.setHeader('Cache-Control', 'no-store');
           res.setHeader('Content-Type', 'application/json');
           if (content === null) {
             res.statusCode = 404;
@@ -273,7 +280,13 @@ function shimSource({ repo, branch, autoOpen }) {
   async function handleMessage(message) {
     const { type, payload } = message;
 
-    if (type === "GITHUB_AUTH") {
+    // There is no dashboard here, so the example is always "signed in" and
+    // the site is always registered. Everything the real API decides —
+    // which repository, which branch — is answered from the flags this
+    // preview was started with.
+    const ENVIRONMENT_ID = "00000000-0000-4000-8000-000000000001";
+
+    if (type === "SIGN_IN") {
       await chrome.storage.local.set({ authToken: "example", authLogin: "example-user" });
       return { token: "example", login: "example-user" };
     }
@@ -281,7 +294,28 @@ function shimSource({ repo, branch, autoOpen }) {
     if (type === "API_FETCH") {
       const path = payload.path;
 
-      if (path.startsWith("/api/file")) {
+      // The site registry, faked. The extension asks this first, before any
+      // editing call, and gets back the environment id it then sends.
+      if (path.startsWith("/api/resolve")) {
+        return {
+          data: {
+            known: true,
+            environmentId: ENVIRONMENT_ID,
+            siteId: "00000000-0000-4000-8000-000000000002",
+            hostname: location.hostname,
+            label: "preview",
+            repository: ${JSON.stringify(repo)},
+            branch: ${JSON.stringify(branch)},
+            provider: "github",
+            accountLogin: "example",
+            baseUrl: null,
+            verified: true,
+            organisationId: "00000000-0000-4000-8000-000000000003",
+          },
+        };
+      }
+
+      if (path.startsWith("/api/editing/file")) {
         // Straight to the working tree, so the editor shows the real file.
         const query = path.split("?")[1] || "";
         const wanted = new URLSearchParams(query).get("path");
@@ -290,21 +324,58 @@ function shimSource({ repo, branch, autoOpen }) {
         return response.ok ? { data: body } : { error: body.error };
       }
 
-      if (path.startsWith("/api/repos")) return { data: { repos: [{ full_name: ${JSON.stringify(repo)} }] } };
-      if (path.startsWith("/api/branches")) return { data: { branches: [${JSON.stringify(branch)}] } };
-      if (path.startsWith("/api/preview-status")) return { data: { status: "current", usable: true } };
+      if (path.startsWith("/api/editing/branches")) {
+        return { data: { branches: [${JSON.stringify(branch)}] } };
+      }
+      if (path.startsWith("/api/editing/preview-status")) {
+        return { data: { status: "identical", usable: true, aheadBy: 0 } };
+      }
+      if (path.includes("/repositories")) {
+        return { data: [{ fullName: ${JSON.stringify(repo)}, private: false }] };
+      }
 
       return { error: "example shim: unhandled path " + path };
     }
 
     if (type === "API_POST") {
-      if (payload.path.startsWith("/api/locate")) {
+      const path = payload.path;
+
+      if (path.startsWith("/api/editing/locate")) {
         const response = await fetch(
           "/__iet/locate?text=" + encodeURIComponent(payload.body?.text || "")
         );
         return { data: await response.json() };
       }
-      return { error: "example shim: unhandled post " + payload.path };
+
+      // Observer mode, where a page has no annotations to patch. Refused
+      // for the same reason pull requests are: this preview has no
+      // repository to file against.
+      if (path.startsWith("/api/editing/issues")) {
+        return {
+          error:
+            "This example does not open issues. Use the extension against a real preview deploy.",
+        };
+      }
+
+      // Comments are echoed to the console rather than stored: there is no
+      // inbox here to put them in, and silently succeeding would suggest
+      // there is.
+      if (path.startsWith("/api/feedback")) {
+        const body = payload.body || {};
+        console.info(
+          "[inline-edit] comment (not sent anywhere — this is the example preview)",
+          {
+            message: body.message,
+            element: body.element,
+            source: body.sourceFile
+              ? body.sourceFile + (body.sourceLine ? ":" + body.sourceLine : "")
+              : "not annotated",
+          }
+        );
+        return { data: { id: "example", status: "new" } };
+      }
+
+      return { error: "example shim: unhandled post " + path };
     }
 
     if (type === "LOAD_CODE_EDITOR") {

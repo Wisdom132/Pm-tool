@@ -10,6 +10,8 @@
 //  its place next to the tag name.
 // ============================================================
 
+import { annotationFor } from "../element-selector.js";
+
 const P = "__iet";
 
 /** Classes worth showing: the page's own, never our decorations. */
@@ -119,11 +121,18 @@ export function createInspectorCard() {
       title.textContent = describe(el);
       card.appendChild(title);
 
+      // An element's own annotation, or the nearest annotated ancestor's.
+      // An image is never stamped — the plugin annotates elements holding
+      // text — so without this the card is empty for exactly the things
+      // somebody inspects when they cannot tell what drew them.
+      const annotation = annotationFor(el);
+
       const rows = [
-        ["Source file", el.dataset.editFile || null],
-        ["Line", el.dataset.editLine || null],
-        ["Framework", el.dataset.editFramework || null],
+        [annotation.exact ? "Source file" : "Rendered in", annotation.sourceFile],
+        ["Line", annotation.sourceLine],
+        ["Framework", el.dataset.editFramework || nearestData(el, "editFramework")],
         ["Translation key", el.dataset.editI18nKey || null],
+        ...mediaRows(el),
         ["Text", (el.innerText || "").trim().slice(0, 120) || null],
       ];
 
@@ -140,11 +149,18 @@ export function createInspectorCard() {
       }
       card.appendChild(list);
 
-      if (!el.dataset.editFile) {
+      if (!annotation.sourceFile) {
+        const note = document.createElement("p");
+        note.className = `${P}-inspector-note`;
+        note.textContent = (el.innerText || "").trim()
+          ? "No build annotation here. The service will search the repository for this text, which is slower and can be ambiguous."
+          : "No build annotation here, and no text to search for. Add the annotation plugin to see which component drew this.";
+        card.appendChild(note);
+      } else if (!annotation.exact) {
         const note = document.createElement("p");
         note.className = `${P}-inspector-note`;
         note.textContent =
-          "No build annotation on this element. The service will search the repository for this text, which is slower and can be ambiguous.";
+          "This element is not annotated itself — the file above is the nearest annotated ancestor, so it is where to look rather than the exact line.";
         card.appendChild(note);
       }
 
@@ -162,4 +178,37 @@ export function createInspectorCard() {
       return !card.hidden;
     },
   };
+}
+
+/** The nearest ancestor carrying a data attribute, for inherited context. */
+function nearestData(el, key) {
+  const attr = `data-${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
+  return el.closest?.(`[${attr}]`)?.dataset?.[key] || null;
+}
+
+/**
+ * What an image, video or icon is, when it has no text to describe it.
+ *
+ * `naturalWidth` rather than the rendered box: somebody inspecting an image
+ * usually wants to know whether a 4000px original is being served into a
+ * 400px slot, and the rendered size alone cannot say.
+ */
+function mediaRows(el) {
+  const tag = el.tagName.toLowerCase();
+  if (!["img", "video", "source", "picture", "svg", "iframe"].includes(tag)) return [];
+
+  const src = el.getAttribute("src") || el.getAttribute("srcset") || "";
+  const rows = [];
+
+  if (src) rows.push(["Source", src.startsWith("data:") ? "inline data URI" : src.split(/[?#]/)[0]]);
+  if (el.getAttribute("alt") !== null) rows.push(["Alt text", el.getAttribute("alt") || "(empty — decorative)"]);
+
+  if (tag === "img" && el.naturalWidth) {
+    const rect = el.getBoundingClientRect();
+    const natural = `${el.naturalWidth}×${el.naturalHeight}`;
+    const shown = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
+    rows.push(["Intrinsic size", natural === shown ? natural : `${natural} (shown at ${shown})`]);
+  }
+
+  return rows;
 }

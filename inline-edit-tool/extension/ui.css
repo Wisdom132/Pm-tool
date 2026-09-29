@@ -30,11 +30,18 @@
   --iet-muted: #a1a1aa;
   --iet-dim: #71717a;
 
-  /* Accents: magenta marks the thing you are acting on, violet the
-     thing you are merely pointing at, emerald what you already changed. */
-  --iet-accent: #ec4899;
-  --iet-accent-deep: #be2a7d;
-  --iet-hover: #a855f7;
+  /* One accent, cyan, in three weights. A single hue reads as "a tool is
+     running" rather than as part of the page, and cyan collides with
+     nothing already meaningful here — emerald is "changed", amber is a
+     warning, red is an error.
+
+     Strength, not hue, separates pointing from acting: see page.css. A
+     darker shade would have been the obvious contrast, but it is *less*
+     visible on a dark site, and the acting state has to be the strongest
+     thing on screen wherever it lands. */
+  --iet-accent: #06b6d4;
+  --iet-accent-deep: #0891b2;
+  --iet-hover: #22d3ee;
   --iet-done: #10b981;
   --iet-warn: #f59e0b;
   --iet-danger: #ef4444;
@@ -81,14 +88,14 @@
   font-weight: 800;
   letter-spacing: 0.02em;
   color: #fff;
-  background: linear-gradient(135deg, var(--iet-accent), #8b5cf6);
+  background: var(--iet-accent);
   cursor: pointer;
   transition: transform 0.13s ease, box-shadow 0.13s ease;
 }
 
 .__iet-brand:hover {
   transform: scale(1.06);
-  box-shadow: 0 3px 12px rgba(236, 72, 153, 0.45);
+  box-shadow: 0 3px 12px rgba(6, 182, 212, 0.45);
 }
 
 .__iet-brand:active {
@@ -164,22 +171,22 @@
 /* The active tool is the one that decides what a click does, so it is
    the single strongest thing in the UI. */
 .__iet-tool[aria-pressed='true'] {
-  background: linear-gradient(135deg, var(--iet-accent), var(--iet-accent-deep));
+  background: var(--iet-accent);
   color: #fff;
-  box-shadow: 0 3px 12px rgba(236, 72, 153, 0.45);
+  box-shadow: 0 3px 12px rgba(6, 182, 212, 0.45);
 }
 
 /* A toggle is a view option, not a mode. Tinting it instead of filling it
    keeps the active *tool* the only strongly marked control, and borrows the
    guides' own colour so the button and the lines read as one thing. */
 .__iet-tool[data-toggle='true'][aria-pressed='true'] {
-  background: rgba(168, 85, 247, 0.16);
+  background: rgba(34, 211, 238, 0.16);
   color: var(--iet-hover);
-  box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.4);
 }
 
 .__iet-tool[data-toggle='true'][aria-pressed='true']:hover {
-  background: rgba(168, 85, 247, 0.24);
+  background: rgba(34, 211, 238, 0.24);
 }
 
 .__iet-count {
@@ -339,8 +346,8 @@
 }
 
 .__iet-label-flag {
-  background: #312e81;
-  color: #c7d2fe;
+  background: #164e63;
+  color: #a5f3fc;
 }
 
 .__iet-label[data-state='selected'] .__iet-label-tag {
@@ -466,7 +473,7 @@
   border-radius: 3px;
   outline: 2px solid var(--iet-accent);
   outline-offset: 2px;
-  box-shadow: 0 0 0 6px rgba(236, 72, 153, 0.16), 0 4px 18px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 0 6px rgba(6, 182, 212, 0.16), 0 4px 18px rgba(0, 0, 0, 0.2);
   cursor: text;
   overflow-wrap: break-word;
 }
@@ -630,10 +637,10 @@
 /* Locate: finding a source file for unannotated text */
 .__iet-locate-btn {
   padding: 3px 8px;
-  border: 1px dashed #c4b5fd;
+  border: 1px dashed #a5f3fc;
   border-radius: 6px;
-  background: #f5f3ff;
-  color: #6d28d9;
+  background: #ecfeff;
+  color: #0e7490;
   font: inherit;
   font-size: 11px;
   font-weight: 600;
@@ -641,7 +648,7 @@
 }
 
 .__iet-locate-btn:hover:not(:disabled) {
-  background: #ede9fe;
+  background: #cffafe;
 }
 
 .__iet-locate-btn:disabled {
@@ -765,7 +772,7 @@
 
 .__iet-candidate:hover {
   border-color: var(--iet-accent);
-  background: #fdf2f8;
+  background: #ecfeff;
 }
 
 .__iet-candidate-path {
@@ -776,7 +783,7 @@
 
 /* A path the editor confirmed, rather than one the build supplied. */
 #__iet-edits-table td.__iet-located {
-  color: #6d28d9;
+  color: #0e7490;
 }
 
 #__iet-note-label {
@@ -803,7 +810,7 @@
 #__iet-note:focus {
   outline: none;
   border-color: var(--iet-accent);
-  box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.15);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15);
 }
 
 #__iet-panel-btns {
@@ -836,13 +843,13 @@
 
 /* Secondary route: always available, and the only one in observer mode. */
 #__iet-panel-issue {
-  border: 1px solid #c4b5fd;
-  background: #f5f3ff;
-  color: #6d28d9;
+  border: 1px solid #a5f3fc;
+  background: #ecfeff;
+  color: #0e7490;
 }
 
 #__iet-panel-issue:hover:not(:disabled) {
-  background: #ede9fe;
+  background: #cffafe;
 }
 
 #__iet-panel-issue:disabled {
@@ -941,7 +948,7 @@
 .__iet-conn-row input:focus {
   outline: none;
   border-color: var(--iet-accent);
-  box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.15);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15);
 }
 
 #__iet-connect-btn {
@@ -1111,7 +1118,7 @@
 .__iet-prop-input:focus {
   outline: none;
   border-color: var(--iet-accent);
-  box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.2);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2);
 }
 
 .__iet-prop-pick {
@@ -1157,8 +1164,8 @@
   gap: 4px;
   padding: 3px 4px 3px 7px;
   border-radius: 5px;
-  background: rgba(168, 85, 247, 0.16);
-  color: #d8b4fe;
+  background: rgba(34, 211, 238, 0.16);
+  color: #67e8f9;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 10.5px;
 }
@@ -1197,7 +1204,7 @@
 .__iet-chip-input:focus {
   outline: none;
   border-color: var(--iet-hover);
-  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.2);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.2);
 }
 
 .__iet-suggestions {
@@ -1230,7 +1237,7 @@
 }
 
 .__iet-suggestion:hover {
-  background: rgba(168, 85, 247, 0.2);
+  background: rgba(34, 211, 238, 0.2);
 }
 
 /* ============================================================
@@ -1319,9 +1326,9 @@
 }
 
 .__iet-breakpoint[aria-pressed='true'] {
-  background: rgba(168, 85, 247, 0.2);
-  color: #d8b4fe;
-  box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.4);
+  background: rgba(34, 211, 238, 0.2);
+  color: #67e8f9;
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.4);
 }
 
 .__iet-breakpoint-note,
@@ -1440,7 +1447,7 @@
   height: 5px;
   margin-left: 6px;
   border-radius: 50%;
-  background: #ec4899;
+  background: var(--iet-accent);
   vertical-align: middle;
 }
 
@@ -1595,4 +1602,126 @@
 .__iet-source-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+
+/* ── Comment composer ──────────────────────────────────────────
+   Same modal treatment as the source picker: a comment is a
+   deliberate act and deserves the page held still while it is
+   written. Themed with the shared variables rather than fixed
+   colours — the panel has a dark surface, and hard-coded white
+   would be a light dialog in a dark tool. */
+
+#__iet-comment-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: grid;
+  place-items: center;
+  background: rgba(9, 9, 11, 0.45);
+}
+
+#__iet-comment {
+  width: min(480px, 92vw);
+  padding: 20px 22px;
+  border-radius: 14px;
+  background: var(--iet-surface-solid);
+  border: 1px solid var(--iet-line);
+  box-shadow: var(--iet-shadow);
+  color: var(--iet-text);
+  display: grid;
+  gap: 10px;
+}
+
+.__iet-comment-title {
+  display: block;
+  font-size: 14px;
+}
+
+.__iet-comment-about {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--iet-muted);
+  /* A long heading must not stretch the dialog. */
+  overflow-wrap: anywhere;
+}
+
+.__iet-comment-field {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border: 1px solid var(--iet-line);
+  border-radius: 8px;
+  background: var(--iet-surface);
+  font: inherit;
+  color: var(--iet-text);
+  resize: vertical;
+}
+
+.__iet-comment-field:focus {
+  outline: 2px solid var(--iet-accent);
+  outline-offset: -1px;
+  border-color: var(--iet-accent);
+}
+
+.__iet-comment-where {
+  margin: 0;
+  font-size: 12px;
+  color: var(--iet-muted);
+}
+
+.__iet-comment-where code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--iet-hover);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--iet-accent);
+}
+
+/* No annotation: the comment is still useful, just less precise. */
+.__iet-comment-where-weak {
+  color: var(--iet-warn);
+}
+
+.__iet-comment-status {
+  margin: 0;
+  font-size: 12px;
+}
+
+.__iet-comment-status-error {
+  color: var(--iet-danger);
+}
+
+.__iet-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.__iet-comment-cancel,
+.__iet-comment-send {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--iet-line);
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  color: var(--iet-text);
+  cursor: pointer;
+}
+
+.__iet-comment-cancel:hover {
+  background: var(--iet-hover);
+}
+
+.__iet-comment-send {
+  border-color: var(--iet-accent);
+  background: var(--iet-accent);
+  color: #fff;
+}
+
+.__iet-comment-send:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

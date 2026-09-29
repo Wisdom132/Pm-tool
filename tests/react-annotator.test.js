@@ -59,18 +59,31 @@ describe('react annotation plugin', () => {
 
   it('records 1-based line and 0-based column', () => {
     const out = transform('<div>\n  <h1>Hello</h1>\n</div>');
-    expect(attr(out, 'data-edit-line')).toBe('2');
-    expect(attr(out, 'data-edit-col')).toBe('2');
+    // The <div> is the JSX root and carries provenance, so read the
+    // coordinates off the element that is actually editable.
+    const h1 = /<h1 ([^>]*)>/.exec(out)[1];
+    expect(/data-edit-line="(\d+)"/.exec(h1)[1]).toBe('2');
+    expect(/data-edit-col="(\d+)"/.exec(h1)[1]).toBe('2');
   });
 
-  it('annotates each qualifying element', () => {
+  it('offers each qualifying element for editing', () => {
     const out = transform('<div><h1>A</h1><p>B</p></div>');
-    expect(out.match(/data-edit-file/g)).toHaveLength(2);
+    // Two editable, plus provenance on the root div.
+    expect(out.match(/data-editable/g)).toHaveLength(2);
+    expect(out.match(/data-edit-file/g)).toHaveLength(3);
   });
 
-  it('skips elements whose text is an expression', () => {
+  it('does not offer an element whose text is an expression', () => {
+    // It is the root here, so it carries provenance; there is simply no
+    // literal for the codemod to rewrite.
     const out = transform('<h1>{title}</h1>');
-    expect(out).not.toContain('data-edit-file');
+    expect(out).not.toContain('data-editable');
+    expect(out).toContain('data-edit-file');
+  });
+
+  it('skips a nested expression-only element entirely', () => {
+    const out = transform('<div>Copy<h1>{title}</h1></div>');
+    expect(/<h1 [^>]*data-edit-file/.test(out)).toBe(false);
   });
 
   it('annotates literal text sitting beside an expression', () => {
@@ -79,13 +92,13 @@ describe('react annotation plugin', () => {
     expect(transform('<h1>Hello {name}</h1>')).toContain('data-edit-file');
   });
 
-  it('still leaves an element with no literal text of its own', () => {
-    expect(transform('<h1>{name}</h1>')).not.toContain('data-edit-file');
+  it('still leaves an element with no literal text of its own uneditable', () => {
+    expect(transform('<h1>{name}</h1>')).not.toContain('data-editable');
   });
 
-  it('skips whitespace-only children', () => {
+  it('does not offer whitespace-only children for editing', () => {
     const out = transform('<p>\n  \n</p>');
-    expect(out).not.toContain('data-edit-file');
+    expect(out).not.toContain('data-editable');
   });
 
   it('annotates any tag that holds only text', () => {
@@ -98,10 +111,12 @@ describe('react annotation plugin', () => {
     );
   });
 
-  it('leaves a container with no text of its own', () => {
-    const out = transform('<div className="grid"><p>Body</p></div>');
-    expect(out.match(/data-edit-file/g)).toHaveLength(1);
-    expect(/<div[^>]*data-edit-file/.test(out)).toBe(false);
+  it('does not offer a container with no text of its own', () => {
+    // It is the JSX root, so it carries provenance — that is how an image
+    // inside it finds a file — but there is nothing to rewrite.
+    const out = transform('<div><h1>Only the h1</h1></div>');
+    expect(/<div [^>]*data-editable/.test(out)).toBe(false);
+    expect(/<div [^>]*data-edit-file/.test(out)).toBe(true);
   });
 
   it('skips React components', () => {
@@ -140,7 +155,7 @@ describe('react annotation plugin', () => {
   it('does nothing when INLINE_EDIT is off', () => {
     process.env.INLINE_EDIT = '0';
     const out = transform('<h1>Hello</h1>');
-    expect(out).not.toContain('data-edit');
+    expect(out).not.toContain('data-edit-i18n-key');
   });
 
   it('runs in development when INLINE_EDIT is unset', () => {
@@ -152,7 +167,7 @@ describe('react annotation plugin', () => {
   it('stays off in production when INLINE_EDIT is unset', () => {
     delete process.env.INLINE_EDIT;
     process.env.NODE_ENV = 'production';
-    expect(transform('<h1>Hello</h1>')).not.toContain('data-edit');
+    expect(transform('<h1>Hello</h1>')).not.toContain('data-edit-i18n-key');
   });
 });
 
@@ -173,14 +188,14 @@ describe('i18n annotation', () => {
     expect(attr(out, 'data-edit-i18n-key')).toBe('a.b');
   });
 
-  it('ignores an unrelated function call', () => {
+  it('does not treat an unrelated function call as a translation', () => {
     const out = transform(`<h1>{formatDate(now)}</h1>`);
-    expect(out).not.toContain('data-edit');
+    expect(out).not.toContain('data-edit-i18n-key');
   });
 
-  it('ignores a bare expression', () => {
+  it('does not treat a bare expression as a translation', () => {
     const out = transform(`<h1>{title}</h1>`);
-    expect(out).not.toContain('data-edit');
+    expect(out).not.toContain('data-edit-i18n-key');
   });
 
   it('ignores a key that is not a literal', () => {

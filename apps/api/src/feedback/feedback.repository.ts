@@ -73,6 +73,34 @@ export class FeedbackRepository {
     });
   }
 
+  /**
+   * Record a comment.
+   *
+   * `organisationId` and `siteId` are taken from the resolved environment,
+   * never from the caller — the same rule as editing. A comment that could
+   * name its own site would let a page file feedback against somebody
+   * else's.
+   */
+  create(input: {
+    organisationId: string;
+    siteId: string;
+    environmentId: string;
+    message: string;
+    pageUrl: string;
+    pagePath: string;
+    element: string | null;
+    sourceFile: string | null;
+    sourceLine: number | null;
+    authorUserId: string;
+    viewport: string | null;
+    userAgent: string | null;
+  }) {
+    return this.prisma.feedback.create({
+      data: input,
+      select: LIST_FIELDS,
+    });
+  }
+
   find(organisationId: string, id: string) {
     return this.prisma.feedback.findFirst({
       where: { id, organisationId },

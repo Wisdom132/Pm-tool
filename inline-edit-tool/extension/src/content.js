@@ -14,6 +14,8 @@
 
 import { resolvePageContext } from "./page-context.js";
 import { editingParams, resolveSite } from "./site-resolver.js";
+import { annotationFor, commentTargetFrom, selectorFor } from "./element-selector.js";
+import { openCommentComposer } from "./ui/comment-composer.js";
 import { resolveServiceUrl } from "./config.js";
 import { getSessionId } from "./auth-storage.js";
 import { getShadowRoot, isOwnUi } from "./shadow-host.js";
@@ -83,7 +85,22 @@ const INTERACTIVE_TOOLS = new Set([
   TOOL.EDIT,
   TOOL.PROPERTIES,
   TOOL.STRUCTURE,
+  TOOL.COMMENT,
 ]);
+
+/**
+ * Tools that act on anything on the page rather than only what the codemod
+ * can edit.
+ *
+ * The registry's rule — annotated elements, plus anything holding direct
+ * text — is right for the tools that *change* something: offering an edit
+ * that fails at commit time is worse than not offering it.
+ *
+ * It is wrong for the two that only describe or discuss. You inspect an
+ * image to find out which component drew it, and you comment on whatever you
+ * can see. Both were silently inert on images, icons and empty buttons.
+ */
+const WHOLE_PAGE_TOOLS = new Set([TOOL.COMMENT, TOOL.INSPECT]);
 
 // ============================================================
 //  Session persistence
@@ -318,9 +335,10 @@ function selectTool(toolId) {
 
 const TOOL_HINTS = {
   [TOOL.EDIT]: "Click any highlighted text to rewrite it",
-  [TOOL.INSPECT]: "Hover to see where text comes from; click for detail",
+  [TOOL.INSPECT]: "Hover anything to see where it comes from; click for detail",
   [TOOL.PROPERTIES]: "Click an element to edit its links, alt text and classes",
   [TOOL.STRUCTURE]: "Click an element to move, duplicate or delete it",
+  [TOOL.COMMENT]: "Click anything to leave a note for whoever can fix it",
 };
 
 function runAction(id) {
@@ -393,6 +411,15 @@ function teardownInteraction() {
 
 /** Find editable elements, decorate them, and re-apply pending edits. */
 function scanAndDecorate() {
+  // These target anything, so there is nothing to mark out in advance —
+  // and marking only the editable ones would say the opposite of what they
+  // do. The hover handler paints whatever is under the cursor.
+  if (WHOLE_PAGE_TOOLS.has(activeTool)) {
+    editableEls = [];
+    autoDetectMode = false;
+    return;
+  }
+
   const { elements, detected, autoDetected } = findEditableElements(document, isOwnUi);
   editableEls = elements;
   autoDetectMode = autoDetected;
@@ -466,18 +493,30 @@ function onViewportChange() {
 }
 
 // ---- Hover -------------------------------------------------
+
+
+/** What an event is about. */
 function editableFrom(target) {
   if (!target?.closest || isOwnUi(target)) return null;
+
+  if (WHOLE_PAGE_TOOLS.has(activeTool)) return commentTargetFrom(target);
   return target.closest(`.${CLS.editable}`);
 }
+
 
 function onDocumentHover(e) {
   const el = editableFrom(e.target);
   if (!el || el === hoveredEl) return;
 
-  if (hoveredEl) hoveredEl.classList.remove(CLS.hovered);
+  if (hoveredEl) {
+    hoveredEl.classList.remove(CLS.hovered);
+    // Comment mode adds the pointer cursor itself, since the element was
+    // never decorated by the registry.
+    if (WHOLE_PAGE_TOOLS.has(activeTool)) hoveredEl.classList.remove(CLS.editable);
+  }
   hoveredEl = el;
   el.classList.add(CLS.hovered);
+  if (WHOLE_PAGE_TOOLS.has(activeTool)) el.classList.add(CLS.editable);
 
   const state = session.has(editKey(el)) ? "edited" : "hover";
   labels.show(el, { state });
@@ -495,6 +534,9 @@ function onDocumentUnhover(e) {
   if (el === activeTarget) return;
 
   el.classList.remove(CLS.hovered);
+  // Comment mode borrowed this class for the cursor; it was never the
+  // registry's, so it has to be given back.
+  if (WHOLE_PAGE_TOOLS.has(activeTool)) el.classList.remove(CLS.editable);
   if (el === hoveredEl) {
     hoveredEl = null;
     labels.hide();
@@ -625,7 +667,75 @@ function activateOn(el, event) {
     labels.show(el, { state: "selected" });
     guides.show(el, "selected");
     hideCrumbs();
+    return;
   }
+
+  if (activeTool === TOOL.COMMENT) {
+    labels.show(el, { state: "selected" });
+    guides.show(el, "selected");
+    hideCrumbs();
+    void leaveComment(el);
+  }
+}
+
+/**
+ * Leave a comment on an element.
+ *
+ * The one path through this tool that is not editing: nothing is staged,
+ * nothing is committed, and the page is unchanged. It exists for the person
+ * who has noticed something but should not or cannot change it — and where
+ * the page is annotated, the comment arrives pinned to the source line,
+ * which is what no general feedback tool can do.
+ */
+async function leaveComment(el) {
+  const ctx = await editingContext();
+
+  if (!ctx.known) {
+    toast.show(ctx.reason, { tone: "warn", duration: 6000 });
+    return;
+  }
+
+  // An image is rarely annotated itself, but the component around it is.
+  const source = annotationFor(el);
+
+  openCommentComposer({
+    root,
+    element: el,
+    description: describeElement(el),
+    source,
+    onSubmit: async (message) => {
+      const stored = await chrome.storage.sync.get(["prServiceUrl"]);
+      const response = await chrome.runtime.sendMessage({
+        type: "API_POST",
+        payload: {
+          path: "/api/feedback",
+          token: (await getSessionId()) || "",
+          serviceUrl: resolveServiceUrl(stored.prServiceUrl),
+          body: {
+            environmentId: ctx.environmentId,
+            message,
+            pageUrl: window.location.href,
+            element: selectorFor(el),
+            sourceFile: source.sourceFile || undefined,
+            sourceLine: source.sourceLine ?? undefined,
+            viewport: `${window.innerWidth}x${window.innerHeight}`,
+          },
+        },
+      });
+
+      if (response?.error) return { error: response.error };
+
+      toast.show("Comment sent \u2014 it is in the dashboard inbox.", {
+        tone: "info",
+        duration: 3500,
+      });
+      return {};
+    },
+    onClose: () => {
+      labels.hide();
+      guides.hide();
+    },
+  });
 }
 
 /**

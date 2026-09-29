@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { hit, reset, LIMITS } from '../apps/api/src/editing/rate-limit';
+import { hit, reset, LIMITS } from '../apps/api/src/common/rate-limit';
 
 beforeEach(() => reset());
 afterEach(() => vi.useRealTimers());

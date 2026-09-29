@@ -3,7 +3,7 @@ import { EditingService } from './editing.service';
 import { EditingController } from './editing.controller';
 import { I18nService } from './i18n.service';
 import { LocateService } from './locate.service';
-import { RateLimitGuard } from './rate-limit.guard';
+import { RateLimitGuard } from '../common/rate-limit.guard';
 import { SitesModule } from '../sites/sites.module';
 
 @Module({

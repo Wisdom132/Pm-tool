@@ -1,6 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { FeedbackRepository } from './feedback.repository';
-import { FeedbackQueryDto, PromoteFeedbackDto, SetFeedbackStatusDto } from './dto';
+import { SitesService } from '../sites/sites.service';
+import { assertSourcePath } from '../editing/source-path';
+import {
+  CreateFeedbackDto,
+  FeedbackQueryDto,
+  PromoteFeedbackDto,
+  SetFeedbackStatusDto,
+} from './dto';
 
 const DEFAULT_LIMIT = 25;
 
@@ -14,12 +21,55 @@ const DEFAULT_LIMIT = 25;
  * and a way to turn it off, and shipping the ingest without those is how the
  * first flood happens.
  *
- * So nothing creates a `Feedback` row yet except the extension, once it is
- * wired.
+ * The extension is the one producer: an authenticated editor, whose session
+ * already proves who they are and which sites they can reach.
  */
 @Injectable()
 export class FeedbackService {
-  constructor(private readonly feedback: FeedbackRepository) {}
+  constructor(
+    private readonly feedback: FeedbackRepository,
+    private readonly sites: SitesService,
+  ) {}
+
+  /**
+   * Leave a comment from the extension.
+   *
+   * Goes through `authoriseEnvironment`, the same check editing uses, so a
+   * comment can only be filed against a site the caller's teams cover — and
+   * the organisation and site are derived from it rather than sent.
+   */
+  async create(userId: string, dto: CreateFeedbackDto) {
+    const { environment } = await this.sites.authoriseEnvironment(userId, dto.environmentId);
+
+    // The annotation arrives from a page we do not control. An invalid path
+    // is dropped rather than rejected: the comment is still worth keeping,
+    // it just loses the source link.
+    let sourceFile: string | null = null;
+    if (dto.sourceFile) {
+      try {
+        sourceFile = assertSourcePath(dto.sourceFile);
+      } catch {
+        sourceFile = null;
+      }
+    }
+
+    const created = await this.feedback.create({
+      organisationId: environment.organisationId,
+      siteId: environment.siteId,
+      environmentId: environment.id,
+      message: dto.message.trim(),
+      pageUrl: dto.pageUrl,
+      pagePath: pathOf(dto.pageUrl),
+      element: dto.element ?? null,
+      sourceFile,
+      sourceLine: sourceFile ? (dto.sourceLine ?? null) : null,
+      authorUserId: userId,
+      viewport: dto.viewport ?? null,
+      userAgent: null,
+    });
+
+    return describe(created);
+  }
 
   async list(organisationId: string, query: FeedbackQueryDto) {
     const limit = query.limit ?? DEFAULT_LIMIT;
@@ -116,4 +166,18 @@ function describe<T extends {
       verified: Boolean(authorUser),
     },
   };
+}
+
+/**
+ * The path alone, for grouping comments by page.
+ *
+ * A malformed URL should not be what rejects somebody's comment, so it falls
+ * back to the whole string.
+ */
+function pathOf(pageUrl: string): string {
+  try {
+    return new URL(pageUrl).pathname || '/';
+  } catch {
+    return pageUrl.slice(0, 200);
+  }
 }

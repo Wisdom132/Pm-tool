@@ -1,4 +1,11 @@
-import { Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthRepository } from './auth.repository';
 import { MailerService } from './mailer.service';
 import { createToken, hashToken } from '../common/tokens';
@@ -71,6 +78,77 @@ export class AuthService {
       userId,
       exceptToken ? hashToken(exceptToken) : undefined,
     );
+  }
+
+  /**
+   * What an invitation link is offering.
+   *
+   * Public, because the person holding the link may have no account yet —
+   * which is the whole point of an invitation. So it is deliberately thin:
+   * the organisation's name, who asked, the role, and the address it was
+   * sent to. No member list, no site list, nothing that would make a
+   * guessed token worth having.
+   *
+   * `status` rather than an exception for expired and already-accepted: the
+   * page has something useful to say in both cases, and a 404 would make
+   * them indistinguishable from a typo.
+   */
+  async describeInvitation(token: string) {
+    const invitation = await this.repository.findInvitationByToken(hashToken(token));
+
+    if (!invitation || invitation.organisation.deletedAt) {
+      throw new NotFoundException('That invitation link is not valid.');
+    }
+
+    const status = invitation.acceptedAt
+      ? ('accepted' as const)
+      : invitation.expiresAt < new Date()
+        ? ('expired' as const)
+        : ('pending' as const);
+
+    return {
+      status,
+      email: invitation.email,
+      role: invitation.role,
+      expiresAt: invitation.expiresAt,
+      organisation: { id: invitation.organisation.id, name: invitation.organisation.name },
+    };
+  }
+
+  /**
+   * Accept an invitation as the signed-in user.
+   *
+   * The address must match. An invitation is sent *to a person*, so letting
+   * whoever holds a forwarded link join instead would make the address on it
+   * meaningless — and it is the only thing tying the invitation to anyone.
+   */
+  async acceptInvitation(token: string, userId: string, userEmail: string) {
+    const invitation = await this.repository.findInvitationByToken(hashToken(token));
+
+    if (!invitation || invitation.organisation.deletedAt) {
+      throw new NotFoundException('That invitation link is not valid.');
+    }
+    if (invitation.email !== userEmail) {
+      throw new ForbiddenException(
+        `This invitation was sent to ${invitation.email}. Sign in as them to accept it.`,
+      );
+    }
+    if (invitation.expiresAt < new Date()) {
+      throw new BadRequestException('That invitation has expired. Ask for a new one.');
+    }
+
+    const accepted = await this.repository.acceptInvitation({
+      invitationId: invitation.id,
+      organisationId: invitation.organisationId,
+      userId,
+      email: invitation.email,
+      role: invitation.role,
+      teamIds: invitation.teamIds,
+    });
+
+    // Already accepted — by their own earlier sign-in, most likely. They are
+    // a member either way, so this is not a failure.
+    return { organisationId: invitation.organisationId, alreadyAccepted: !accepted };
   }
 
   /** Who am I, and what can I see. The dashboard calls this on boot. */

@@ -56,21 +56,28 @@ export async function resolveSite(send, { hostname, token, serviceUrl, force = f
       },
     });
 
+    // The background bridge answers `{ data }` or `{ error }` — it is a
+    // proxy, so the API's own body is nested. Reading `known` off the
+    // envelope instead of off `data` is silently false, which reads exactly
+    // like "this site is not registered".
+    const site = response?.data;
+
     if (response?.error) {
       result = unknown(response.error);
-    } else if (response?.known) {
+    } else if (site?.known) {
       result = {
         known: true,
-        environmentId: response.environmentId,
-        repository: response.repository ?? null,
-        branch: response.branch ?? null,
-        hostname: response.hostname ?? hostname,
-        verified: Boolean(response.verified),
+        environmentId: site.environmentId,
+        connectionId: site.connectionId ?? null,
+        repository: site.repository ?? null,
+        branch: site.branch ?? null,
+        hostname: site.hostname ?? hostname,
+        verified: Boolean(site.verified),
         reason: null,
       };
     } else {
       result = unknown(
-        response?.reason ??
+        site?.reason ??
           `${hostname} is not registered. Add it in the dashboard to start editing.`
       );
     }

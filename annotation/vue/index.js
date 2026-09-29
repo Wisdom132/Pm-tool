@@ -65,14 +65,21 @@ const NodeTypes = {
  * @param {number} templateContentOffset - offset of template content start in the full file
  * @param {number} lineOffset - whole lines before the template content, so emitted lines are file lines
  */
-function collectMutations(node, filePath, mutations, templateContentOffset, lineOffset) {
+function collectMutations(
+  node,
+  filePath,
+  mutations,
+  templateContentOffset,
+  lineOffset,
+  isTemplateRoot = false
+) {
   if (node.type === NodeTypes.ELEMENT) {
     const tag = node.tag;
     // A capitalised tag is a component: its children are slot content handed
     // to something else, and the element that finally renders them is not
     // this one, so an annotation here would point at the wrong element.
     if (!/^[A-Z]/.test(tag)) {
-      if (isEditable(node, NodeTypes)) {
+      if (isEditable(node, NodeTypes) || isTemplateRoot) {
         const alreadyAnnotated =
           Array.isArray(node.props) &&
           node.props.some(
@@ -88,13 +95,23 @@ function collectMutations(node, filePath, mutations, templateContentOffset, line
           // React and Angular plugins emit, and what the service reads.
           const line = node.loc.start.line + lineOffset;
           const col = node.loc.start.column;
+          // `data-editable` is the editing contract — "the codemod can
+          // rewrite this" — and stays narrow, because offering an edit that
+          // fails at pull-request time is worse than not offering it.
+          //
+          // `data-edit-file` is provenance: "this came from here". Widening
+          // that claims nothing false, and without it an image, an icon or
+          // a footer full of links has no annotated ancestor at all, so
+          // Inspect and Comment can say nothing about where it came from.
+          const editable = isEditable(node, NodeTypes);
+
           mutations.push({
             offset: insertOffset,
             text:
               ` data-edit-file="${filePath}"` +
               ` data-edit-line="${line}"` +
               ` data-edit-col="${col}"` +
-              ` data-editable="true"` +
+              (editable ? ` data-editable="true"` : ``) +
               ` data-edit-framework="vue"`,
           });
         }
@@ -108,7 +125,10 @@ function collectMutations(node, filePath, mutations, templateContentOffset, line
     }
   } else if (node.type === NodeTypes.ROOT && Array.isArray(node.children)) {
     for (const child of node.children) {
-      collectMutations(child, filePath, mutations, templateContentOffset, lineOffset);
+      // A template's top-level elements are this component's roots, so an
+      // annotation there answers "which file drew this?" for everything
+      // inside — which is every image, icon and wrapper in the component.
+      collectMutations(child, filePath, mutations, templateContentOffset, lineOffset, true);
     }
   }
 }

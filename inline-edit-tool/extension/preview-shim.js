@@ -264,14 +264,33 @@
       await delay(250);
       const path = payload.path;
 
-      if (path.startsWith("/api/repos")) return { data: { repos: FAKE_REPOS } };
-
-      if (path.startsWith("/api/branches")) {
-        const repo = decodeURIComponent(new URLSearchParams(path.split("?")[1]).get("repo"));
-        return { data: { branches: FAKE_BRANCHES[repo] || ["main"] } };
+      // The site registry, faked. The extension asks this before any editing
+      // call and gets back the environment id it then sends — so without it
+      // every tool stops before it starts.
+      if (path.startsWith("/api/resolve")) {
+        return {
+          data: {
+            known: true,
+            environmentId: "00000000-0000-4000-8000-000000000001",
+            siteId: "00000000-0000-4000-8000-000000000002",
+            organisationId: "00000000-0000-4000-8000-000000000003",
+            hostname: location.hostname,
+            label: "preview",
+            repository: FAKE_REPOS[0].full_name,
+            branch: "main",
+            provider: "github",
+            accountLogin: "preview",
+            baseUrl: null,
+            verified: true,
+          },
+        };
       }
 
-      if (path.startsWith("/api/file")) {
+      if (path.startsWith("/api/editing/branches")) {
+        return { data: { branches: FAKE_BRANCHES[FAKE_REPOS[0].full_name] || ["main"] } };
+      }
+
+      if (path.startsWith("/api/editing/file")) {
         const params = new URLSearchParams(path.split("?")[1]);
         const wanted = params.get("path");
         return {
@@ -283,16 +302,34 @@
         };
       }
 
-      if (path.startsWith("/api/preview-status")) {
+      if (path.startsWith("/api/editing/preview-status")) {
         // Exercises the stale-preview banner.
-        return { data: { status: "ahead", behindBy: 2, usable: true } };
+        return { data: { status: "ahead", aheadBy: 2, behindBy: 2, usable: true } };
       }
 
       return { error: `preview shim: unhandled path ${path}` };
     }
 
     if (type === "API_POST") {
-      if (path_of(payload).startsWith("/api/locate")) {
+      if (path_of(payload).startsWith("/api/feedback")) {
+        // Echoed, not stored: there is no inbox behind this demo, and
+        // silently succeeding would suggest there is.
+        const body = payload.body || {};
+        console.info("[inline-edit] comment (demo — not sent anywhere)", {
+          message: body.message,
+          element: body.element,
+          source: body.sourceFile
+            ? body.sourceFile + (body.sourceLine ? ":" + body.sourceLine : "")
+            : "not annotated",
+        });
+        return { data: { id: "preview", status: "new" } };
+      }
+
+      if (path_of(payload).startsWith("/api/editing/issues")) {
+        return { error: "This demo does not open issues." };
+      }
+
+      if (path_of(payload).startsWith("/api/editing/locate")) {
         // Two hits, so the demo exercises the picker rather than the
         // single-match shortcut.
         const text = payload.body?.text || "";

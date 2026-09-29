@@ -19,10 +19,11 @@ export const TOOL = {
   EDIT: "edit",
   PROPERTIES: "properties",
   STRUCTURE: "structure",
+  COMMENT: "comment",
 };
 
 const TOOLS = [
-  { id: TOOL.INSPECT, icon: "inspect", label: "Inspect", hint: "See where text comes from" },
+  { id: TOOL.INSPECT, icon: "inspect", label: "Inspect", hint: "See where anything comes from" },
   { id: TOOL.EDIT, icon: "edit", label: "Edit text", hint: "Click any text to rewrite it" },
   {
     id: TOOL.PROPERTIES,
@@ -35,6 +36,15 @@ const TOOLS = [
     icon: "copy",
     label: "Rearrange",
     hint: "Move, duplicate or delete",
+  },
+  {
+    id: TOOL.COMMENT,
+    icon: "comment",
+    label: "Comment",
+    // Deliberately last, and phrased as asking rather than changing: this
+    // is the tool for someone who has noticed something but should not or
+    // cannot make the change themselves.
+    hint: "Leave a note for whoever can fix it",
   },
 ];
 

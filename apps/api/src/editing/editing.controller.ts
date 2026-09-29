@@ -8,7 +8,7 @@ import {
   PreviewStatusQueryDto,
   ReadFileQueryDto,
 } from './dto';
-import { RateLimit, RateLimitGuard } from './rate-limit.guard';
+import { RateLimit, RateLimitGuard } from '../common/rate-limit.guard';
 import { CurrentSession, Session } from '../auth/session.decorator';
 
 /**

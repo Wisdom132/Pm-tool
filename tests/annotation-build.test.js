@@ -60,6 +60,38 @@ function annotatedLines(code) {
 }
 
 /**
+ * Lines the *editing* contract covers.
+ *
+ * Distinct from `annotatedLines`, because the two attributes mean different
+ * things and were once emitted together:
+ *
+ *   data-editable  the codemod can rewrite this. Narrow on purpose —
+ *                  offering an edit that fails at pull-request time is
+ *                  worse than not offering it.
+ *   data-edit-file provenance: "this came from here". Wider, because an
+ *                  image or an icon has no text to edit but still came from
+ *                  somewhere, and Inspect and Comment need to say where.
+ *
+ * Scanned per *attribute run* rather than with one regex spanning both
+ * attributes: Vue compiles a template into a render function, so there are
+ * no tag boundaries in the output and a `[^>]*?` bridge happily matched one
+ * element's line number against the next element's `data-editable`.
+ */
+function editableLines(code) {
+  const runs = code.split('data-edit-file').slice(1);
+  const lines = [];
+
+  for (const run of runs) {
+    // One element's attributes, before the next annotation begins.
+    const window = run.slice(0, 200);
+    const line = /data-edit-line\\?["']?\s*[:=]\s*\\?["'](\d+)/.exec(window);
+    if (line && window.includes('data-editable')) lines.push(Number(line[1]));
+  }
+
+  return [...new Set(lines)].sort((a, b) => a - b);
+}
+
+/**
  * Every example renders the same component, so what differs is the framework.
  *
  * The line numbers differ because a Vue SFC opens with <template> and a JSX
@@ -111,8 +143,18 @@ describe.each(EXAMPLES_UNDER_TEST)('examples/$name', ({ name, file, framework, e
     expect(code).toContain(framework);
   });
 
-  it('annotates exactly the elements its codemod can edit', () => {
-    expect(annotatedLines(code)).toEqual(expected);
+  it('marks exactly the elements its codemod can edit', () => {
+    expect(editableLines(code)).toEqual(expected);
+  });
+
+  it('records provenance at least as widely as it offers edits', () => {
+    // An image, an icon or a wrapper has no text to edit, but it still came
+    // from a file — and without that, Inspect and Comment can say nothing
+    // about it. Vue also stamps the component root for this reason.
+    const annotated = annotatedLines(code);
+    for (const line of editableLines(code)) {
+      expect(annotated, `line ${line} is editable but has no provenance`).toContain(line);
+    }
   });
 
   it('inserts attributes at the tag, not into the text', () => {

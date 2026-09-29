@@ -1,10 +1,12 @@
 import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { Trim } from '../common/trim';
 
 export class CreateSiteDto {
-  @IsString() @MinLength(3) @MaxLength(253)
+  @Trim() @IsString() @MinLength(3) @MaxLength(253)
   hostname!: string;
 
-  @IsString() @MaxLength(80)
+  // Allowed to be blank: the service falls back to the hostname.
+  @Trim() @IsString() @MaxLength(80)
   name!: string;
 
   @IsIn(['production', 'staging', 'preview'])
@@ -13,7 +15,9 @@ export class CreateSiteDto {
   @IsUUID()
   connectionId!: string;
 
-  @IsString() @MaxLength(140)
+  // MinLength, not just MaxLength: an empty repository was accepted with a
+  // 201 and then failed on every edit, which is the worst place to find out.
+  @Trim() @IsString() @MinLength(3) @MaxLength(140)
   repository!: string;
 
   /** Omitted or null means "read the branch from the page" — preview deploys. */
@@ -22,7 +26,7 @@ export class CreateSiteDto {
 }
 
 export class UpdateSiteDto {
-  @IsOptional() @IsString() @MaxLength(80)
+  @IsOptional() @Trim() @IsString() @MaxLength(80)
   name?: string;
 
   @IsOptional() @IsString() @MaxLength(255)
@@ -30,6 +34,6 @@ export class UpdateSiteDto {
 }
 
 export class ResolveQueryDto {
-  @IsString() @MinLength(3)
+  @Trim() @IsString() @MinLength(3)
   hostname!: string;
 }

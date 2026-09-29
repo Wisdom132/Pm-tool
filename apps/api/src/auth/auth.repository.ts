@@ -168,6 +168,100 @@ export class AuthRepository {
     });
   }
 
+  /**
+   * One invitation, by the hash of its token.
+   *
+   * Returns it whatever its state — expired or already accepted included —
+   * because the page that shows it has to explain *which* of those it is.
+   * Deciding that is the service's job, not the query's.
+   */
+  findInvitationByToken(tokenHash: string) {
+    return this.prisma.invitation.findUnique({
+      where: { tokenHash },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        teamIds: true,
+        expiresAt: true,
+        acceptedAt: true,
+        organisationId: true,
+        organisation: { select: { id: true, name: true, deletedAt: true } },
+      },
+    });
+  }
+
+  /**
+   * Accept one invitation explicitly, for someone who is already signed in.
+   *
+   * `acceptPendingInvitations` covers the sign-in path. This exists for the
+   * gap it leaves: somebody already signed in when they were invited has a
+   * pending invitation and no membership until their *next* sign-in, which
+   * from their side looks like a link that did nothing.
+   */
+  acceptInvitation(params: {
+    invitationId: string;
+    organisationId: string;
+    userId: string;
+    email: string;
+    role: Role;
+    teamIds: string[];
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.invitation.updateMany({
+        where: { id: params.invitationId, acceptedAt: null, expiresAt: { gt: new Date() } },
+        data: { acceptedAt: new Date() },
+      });
+
+      // Conditional, so two clicks cannot both claim it. The membership
+      // upsert below would be harmless twice, but the audit row would not.
+      if (claimed.count !== 1) return false;
+
+      await tx.memberships.upsert({
+        where: {
+          organisationId_userId: { organisationId: params.organisationId, userId: params.userId },
+        },
+        create: {
+          organisationId: params.organisationId,
+          userId: params.userId,
+          role: params.role,
+        },
+        update: {},
+      });
+
+      const named = await tx.team.findMany({
+        where: { organisationId: params.organisationId, id: { in: params.teamIds } },
+        select: { id: true },
+      });
+      const fallback = await tx.team.findFirst({
+        where: { organisationId: params.organisationId, isDefault: true },
+        select: { id: true },
+      });
+
+      const teamIds = new Set(named.map((t) => t.id));
+      if (fallback) teamIds.add(fallback.id);
+
+      if (teamIds.size) {
+        await tx.teamMember.createMany({
+          data: [...teamIds].map((teamId) => ({ teamId, userId: params.userId })),
+          skipDuplicates: true,
+        });
+      }
+
+      await tx.auditEvent.create({
+        data: {
+          organisationId: params.organisationId,
+          actorUserId: params.userId,
+          action: 'invitation.accepted',
+          subject: params.email,
+          detail: { role: params.role },
+        },
+      });
+
+      return true;
+    });
+  }
+
   /** Whether an unexpired, unaccepted invitation is waiting for this address. */
   async hasPendingInvitation(email: string): Promise<boolean> {
     const invitation = await this.prisma.invitation.findFirst({

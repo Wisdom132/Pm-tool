@@ -1,56 +1,25 @@
 'use strict';
 
+const {
+  NEVER_COPY,
+  TAG_RE: tagScanner,
+  lineAt,
+  columnAt,
+  findOpenTagEnd: findOpenEnd,
+  findCloseTag,
+} = require('../lib/markup-scan.js');
+
 /**
  * Shared HTML annotation logic for Angular templates.
  * Works on raw HTML strings; used by both the file-based loader and
  * the inline-template processor.
  */
 
-const HTML_TEXT_TAGS = [
-  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'span', 'a', 'button', 'label',
-  'li', 'td', 'th',
-  'strong', 'em', 'small', 'b', 'i',
-];
 
-const TAG_RE = new RegExp(
-  `<(${HTML_TEXT_TAGS.join('|')})(?=[\\s>])`,
-  'gi'
-);
 
-/** Count newlines before `offset` to get 1-based line number. */
-function lineAt(source, offset) {
-  let n = 1;
-  for (let i = 0; i < offset; i++) {
-    if (source[i] === '\n') n++;
-  }
-  return n;
-}
 
-/**
- * Find the end of an HTML opening tag starting at `startIdx` (the '<').
- * Returns the index of the character just after '>'.
- * Handles quoted attribute values so '>' inside strings is not mistaken for
- * the end of the tag.
- */
-function findOpenTagEnd(source, startIdx) {
-  let i = startIdx + 1; // skip '<'
-  let inStr = false;
-  let strCh = '';
-  while (i < source.length) {
-    const ch = source[i];
-    if (inStr) {
-      if (ch === strCh) inStr = false;
-    } else if (ch === '"' || ch === "'") {
-      inStr = true;
-      strCh = ch;
-    } else if (ch === '>') {
-      return i + 1;
-    }
-    i++;
-  }
-  return source.length;
-}
+
+const findOpenTagEnd = findOpenEnd;
 
 /**
  * Annotate all qualifying text-bearing HTML elements in `source`.
@@ -64,36 +33,70 @@ function findOpenTagEnd(source, startIdx) {
 function annotateSource(source, filePath, framework, lineOffset = 0) {
   const mutations = [];
 
-  TAG_RE.lastIndex = 0;
+  const TAG_RE = tagScanner();
   let match;
+
+  // Elements not nested inside another element in this template. Tags come
+  // in document order, so anything past the previous root's close is a root.
+  let rootEnd = -1;
 
   while ((match = TAG_RE.exec(source)) !== null) {
     const tagStart = match.index;
     const tagName = match[1].toLowerCase();
+    if (NEVER_COPY.includes(tagName)) continue;
+    const isRoot = tagStart >= rootEnd;
 
     // Find the end of this opening tag
     const openTagEnd = findOpenTagEnd(source, tagStart);
     const openTagContent = source.slice(tagStart, openTagEnd);
 
-    // Skip self-closing
-    if (openTagContent.trimEnd().endsWith('/>')) continue;
+    const selfClosing = openTagContent.trimEnd().endsWith('/>');
 
+    // Find the content up to the matching close tag
+    // Depth-aware. "First closing tag wins" stopped at a *nested* element
+    // of the same name, so `<div><div>Copy</div></div>` reported the outer
+    // div as holding only text — and the codemod would then overwrite it,
+    // inner div and all.
+    const closeAt = selfClosing ? openTagEnd : findCloseTag(source, tagName, openTagEnd);
+
+    // Advance the root span *before* any skip. Doing it after meant that on
+    // a second pass the already-annotated root was skipped, `rootEnd` stayed
+    // behind, and a nested child was mistaken for a root — annotated again,
+    // with a column measured into the already-annotated string. Build tools
+    // do run a transform more than once.
+    if (isRoot && closeAt !== null) rootEnd = closeAt;
+
+    if (selfClosing) continue;
     // Skip if already annotated (idempotency)
     if (openTagContent.includes('data-edit-file')) continue;
+    if (closeAt === null) continue;
 
-    // Find the content up to the (first) matching close tag
-    const rest = source.slice(openTagEnd);
-    const closeRe = new RegExp(`</${tagName}\\s*>`, 'i');
-    const closeMatch = closeRe.exec(rest);
-    if (!closeMatch) continue;
+    const innerContent = source.slice(openTagEnd, closeAt);
 
-    const innerContent = rest.slice(0, closeMatch.index);
+    // An Angular template goes through the *HTML* codemod, which replaces
+    // an element's whole inner range. So an element is editable only when
+    // that range is nothing but literal text:
+    //
+    //   a child element — rewriting `<p>Read our <a>guide</a></p>` would
+    //   delete the link. This check used to strip child tags and keep
+    //   their text, so the <p> counted the anchor's copy as its own and
+    //   was offered for editing.
+    //
+    //   an interpolation — rewriting `<p>{{ count }} deploys</p>` would
+    //   write the binding away.
+    //
+    // Svelte, which feeds the same codemod, has always refused both.
+    const hasChildElement = /[<>]/.test(innerContent);
+    const interpolated = /\{\{/.test(innerContent);
+    const editable = !hasChildElement && !interpolated && Boolean(innerContent.trim());
 
-    // Require direct text: strip child tags and check for non-empty text
-    const directText = innerContent.replace(/<[^>]*>/g, '').trim();
-    if (!directText) continue;
+    // A root still earns provenance even with no text of its own: without
+    // it, an image or an icon has no annotated ancestor, and Inspect and
+    // Comment can name no file for it.
+    if (!editable && !isRoot) continue;
 
     const line = lineAt(source, tagStart) + lineOffset;
+    const col = columnAt(source, tagStart);
 
     // Insert attributes right after '<tagname'
     mutations.push({
@@ -101,7 +104,8 @@ function annotateSource(source, filePath, framework, lineOffset = 0) {
       text:
         ` data-edit-file="${filePath}"` +
         ` data-edit-line="${line}"` +
-        ` data-editable="true"` +
+        ` data-edit-col="${col}"` +
+        (editable ? ` data-editable="true"` : ``) +
         ` data-edit-framework="${framework}"`,
     });
   }
@@ -135,4 +139,4 @@ function annotateInlineTemplates(source, filePath) {
   );
 }
 
-module.exports = { annotateSource, annotateInlineTemplates };
+module.exports = { annotateSource, annotateInlineTemplates, columnAt, NEVER_COPY };

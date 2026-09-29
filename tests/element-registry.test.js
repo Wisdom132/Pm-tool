@@ -246,3 +246,52 @@ describe('observeDom', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe('describeElement — elements with no text of their own', () => {
+  // A bare "img" tells a reader nothing about which image was meant, which
+  // matters most when they are looking at a comment somebody left days ago.
+  it('prefers alt text, which was written for a human', () => {
+    mount('<img id="a" alt="Laundry on a line" src="/img/hero.webp" />');
+    expect(describeElement(document.getElementById('a'))).toBe('img · Laundry on a line');
+  });
+
+  it('falls back to aria-label', () => {
+    mount('<button id="a" aria-label="Close dialog"></button>');
+    expect(describeElement(document.getElementById('a'))).toBe('button · Close dialog');
+  });
+
+  it('then to title', () => {
+    mount('<span id="a" title="Delivery time"></span>');
+    expect(describeElement(document.getElementById('a'))).toBe('span · Delivery time');
+  });
+
+  it('then to the file name, without its directory or query', () => {
+    mount('<img id="a" src="/_nuxt/images/hero-laundry.webp?v=2" />');
+    expect(describeElement(document.getElementById('a'))).toBe('img · hero-laundry.webp');
+  });
+
+  it('ignores a data URI, which names nothing', () => {
+    mount('<img id="a" src="data:image/png;base64,iVBORw0KGgo=" />');
+    expect(describeElement(document.getElementById('a'))).toBe('img');
+  });
+
+  it('uses a form field placeholder when there is nothing better', () => {
+    mount('<input id="a" placeholder="Your email" />');
+    expect(describeElement(document.getElementById('a'))).toBe('input · Your email');
+  });
+
+  it('truncates a long label like it truncates long text', () => {
+    mount(`<img id="a" alt="${'x'.repeat(80)}" />`);
+    expect(describeElement(document.getElementById('a'))).toMatch(/…$/);
+  });
+
+  it('still returns the bare tag when nothing names it', () => {
+    mount('<div id="a"><span></span></div>');
+    expect(describeElement(document.getElementById('a'))).toBe('div');
+  });
+
+  it('does not let an attribute outrank real text', () => {
+    mount('<button id="a" title="Submit the form">Send</button>');
+    expect(describeElement(document.getElementById('a'))).toBe('button · Send');
+  });
+});

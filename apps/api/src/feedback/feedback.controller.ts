@@ -11,8 +11,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { FeedbackService } from './feedback.service';
-import { FeedbackQueryDto, PromoteFeedbackDto, SetFeedbackStatusDto } from './dto';
+import {
+  CreateFeedbackDto,
+  FeedbackQueryDto,
+  PromoteFeedbackDto,
+  SetFeedbackStatusDto,
+} from './dto';
 import { Org, OrgContext, OrgGuard } from '../organisations/org-context';
+import { RateLimit, RateLimitGuard } from '../common/rate-limit.guard';
 import { CurrentSession, Session } from '../auth/session.decorator';
 
 /**
@@ -61,5 +67,25 @@ export class FeedbackController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.feedback.remove(org.organisationId, s.userId, id);
+  }
+}
+
+/**
+ * Where the extension files a comment.
+ *
+ * Its own controller, outside `OrgGuard`, for the same reason the editing
+ * endpoints are: the extension runs on a customer's own pages and knows one
+ * thing — the site environment it is on. Which organisation that belongs to
+ * is derived from the environment, not asserted by the caller.
+ */
+@Controller('feedback')
+@UseGuards(RateLimitGuard)
+export class FeedbackIntakeController {
+  constructor(private readonly feedback: FeedbackService) {}
+
+  @Post()
+  @RateLimit('write')
+  create(@Session() session: CurrentSession, @Body() dto: CreateFeedbackDto) {
+    return this.feedback.create(session.userId, dto);
   }
 }

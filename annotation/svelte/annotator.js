@@ -1,5 +1,14 @@
 'use strict';
 
+const {
+  NEVER_COPY,
+  TAG_RE: tagScanner,
+  lineAt,
+  columnAt,
+  findOpenTagEnd,
+  findCloseTag,
+} = require('../lib/markup-scan.js');
+
 /**
  * Annotation for Svelte components.
  *
@@ -14,14 +23,7 @@
  * also keeps the package free of another multi-megabyte peer dependency.
  */
 
-const TEXT_TAGS = [
-  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'span', 'a', 'button', 'label',
-  'li', 'td', 'th',
-  'strong', 'em', 'small', 'b', 'i',
-];
 
-const TAG_RE = new RegExp(`<(${TEXT_TAGS.join('|')})(?=[\\s/>])`, 'gi');
 
 /**
  * Blank out <script> and <style> bodies, keeping every offset and line.
@@ -38,75 +40,9 @@ function maskBlocks(source) {
   );
 }
 
-/** 1-based line number at an offset. */
-function lineAt(source, offset) {
-  let line = 1;
-  for (let i = 0; i < offset; i++) {
-    if (source[i] === '\n') line++;
-  }
-  return line;
-}
 
-/** 0-based column at an offset. */
-function columnAt(source, offset) {
-  const before = source.lastIndexOf('\n', offset - 1);
-  return offset - before - 1;
-}
 
-/**
- * Index just past the '>' that closes the opening tag at `start`.
- * Quoted attribute values are skipped so a '>' inside one is not mistaken
- * for the end of the tag.
- */
-function findOpenTagEnd(source, start) {
-  let i = start + 1;
-  let quote = '';
 
-  while (i < source.length) {
-    const ch = source[i];
-    if (quote) {
-      if (ch === quote) quote = '';
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-    } else if (ch === '>') {
-      return i + 1;
-    }
-    i++;
-  }
-  return source.length;
-}
-
-/**
- * Where the element opened at `openTagEnd` closes.
- *
- * Depth-aware: a `<span>` inside a `<span>` must not end the outer one. The
- * "first closing tag wins" shortcut gets that wrong, and gets it wrong
- * silently, by annotating a range that stops in the middle of the element.
- *
- * @returns {number|null} offset of the matching '</tag'
- */
-function findCloseTag(source, tag, openTagEnd) {
-  const scanner = new RegExp(`<(/?)(${tag})(?=[\\s/>])`, 'gi');
-  scanner.lastIndex = openTagEnd;
-
-  let depth = 1;
-  let match;
-
-  while ((match = scanner.exec(source)) !== null) {
-    const isClosing = match[1] === '/';
-
-    if (isClosing) {
-      depth--;
-      if (depth === 0) return match.index;
-    } else {
-      // A self-closing sibling never needs a matching close.
-      const end = findOpenTagEnd(source, match.index);
-      if (!source.slice(match.index, end).trimEnd().endsWith('/>')) depth++;
-    }
-  }
-
-  return null;
-}
 
 /**
  * Annotate every text-bearing element in a Svelte component.
@@ -119,31 +55,57 @@ function annotateSource(source, filePath) {
   const masked = maskBlocks(source);
   const mutations = [];
 
-  TAG_RE.lastIndex = 0;
+  const TAG_RE = tagScanner();
   let match;
+
+  // Elements not nested inside another element in this file. Tags arrive in
+  // document order, so anything starting past the previous root's close is
+  // itself a root.
+  let rootEnd = -1;
 
   while ((match = TAG_RE.exec(masked)) !== null) {
     const start = match.index;
-    const tag = match[1].toLowerCase();
+    const raw = match[1];
+    const tag = raw.toLowerCase();
+
+    // A capitalised tag is a component: its children are slot content handed
+    // to something else, and the element that finally renders them is not
+    // this one. The old allowlist excluded these by accident — every entry
+    // was lowercase — so widening the scanner had to make it deliberate.
+    if (/^[A-Z]/.test(raw)) continue;
+    if (NEVER_COPY.includes(tag)) continue;
+    const isRoot = start >= rootEnd;
 
     const openTagEnd = findOpenTagEnd(masked, start);
     const openTag = masked.slice(start, openTagEnd);
+    const selfClosing = openTag.trimEnd().endsWith('/>');
+    const closeAt = selfClosing ? openTagEnd : findCloseTag(masked, tag, openTagEnd);
 
-    if (openTag.trimEnd().endsWith('/>')) continue;
+    // Advance the root span *before* any skip. Doing it after meant that on
+    // a second pass the already-annotated root was skipped, `rootEnd` stayed
+    // behind, and a nested child was mistaken for a root — annotated again,
+    // with a column measured into the already-annotated string. Build tools
+    // do run a transform more than once.
+    if (isRoot && closeAt !== null) rootEnd = closeAt;
+
+    if (selfClosing) continue;
     // Idempotent: re-running the plugin must not stack attributes.
     if (openTag.includes('data-edit-file')) continue;
-
-    const closeAt = findCloseTag(masked, tag, openTagEnd);
     if (closeAt === null) continue;
 
     const inner = source.slice(openTagEnd, closeAt);
 
     // Child elements mean the text is not this element's to rewrite, and
     // `{count}` is a value the component computes — neither is editable
-    // copy, so neither earns an annotation.
-    if (/[<>]/.test(inner)) continue;
-    if (/\{/.test(inner)) continue;
-    if (!inner.trim()) continue;
+    // copy, so neither earns an *edit*.
+    const editable =
+      !/[<>]/.test(inner) && !/\{/.test(inner) && Boolean(inner.trim());
+
+    // A root still earns *provenance*. `data-editable` says the codemod can
+    // rewrite this; `data-edit-file` says where it came from. Emitting only
+    // the pair left an image, an icon or a wrapper with no annotated
+    // ancestor anywhere, so Inspect and Comment could name no file for it.
+    if (!editable && !isRoot) continue;
 
     mutations.push({
       offset: start + 1 + tag.length,
@@ -151,7 +113,7 @@ function annotateSource(source, filePath) {
         ` data-edit-file="${filePath}"` +
         ` data-edit-line="${lineAt(masked, start)}"` +
         ` data-edit-col="${columnAt(masked, start)}"` +
-        ` data-editable="true"` +
+        (editable ? ` data-editable="true"` : ``) +
         ` data-edit-framework="svelte"`,
     });
   }
@@ -175,5 +137,5 @@ module.exports = {
   findOpenTagEnd,
   lineAt,
   columnAt,
-  TEXT_TAGS,
+  NEVER_COPY,
 };
