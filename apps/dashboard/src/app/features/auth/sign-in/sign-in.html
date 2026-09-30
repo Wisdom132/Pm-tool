@@ -4,6 +4,12 @@
     <p>We'll email you a link. No password to remember.</p>
   </div>
 
+  @if (error()) {
+    <p-message severity="error" [closable]="true" (onClose)="error.set('')">
+      {{ error() }}
+    </p-message>
+  }
+
   <form class="auth-form" (ngSubmit)="submit()">
     <div class="auth-field">
       <label for="email">Work email</label>

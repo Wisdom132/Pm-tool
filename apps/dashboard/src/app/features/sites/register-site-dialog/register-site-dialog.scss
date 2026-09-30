@@ -27,3 +27,6 @@
 
 .code { margin: 0; padding: var(--ds-s-4); border-radius: var(--ds-r-sm); background: #141416; color: #e4e4e7; font-family: var(--ds-font-mono, ui-monospace, monospace); font-size: var(--ds-t-caption); line-height: 1.6; overflow-x: auto; }
 :host ::ng-deep .nested { margin-left: var(--ds-s-6); }
+/* The token does not exist until the site is registered. Rendering it as
+   prose in the value position invited copying the sentence into DNS. */
+.snippet code em { font-style: normal; opacity: 0.55; }

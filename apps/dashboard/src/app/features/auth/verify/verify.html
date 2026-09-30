@@ -1,0 +1,19 @@
+<div class="auth-screen">
+  @if (error()) {
+    <span class="auth-icon auth-icon-error"><i class="pi pi-exclamation-triangle"></i></span>
+
+    <div class="auth-head">
+      <h1>That link did not work</h1>
+      <p>{{ error() }}</p>
+    </div>
+
+    <p-button label="Get a new link" [fluid]="true" routerLink="/sign-in" />
+  } @else {
+    <span class="auth-icon"><i class="pi pi-spin pi-spinner"></i></span>
+
+    <div class="auth-head">
+      <h1>Signing you in</h1>
+      <p>One moment.</p>
+    </div>
+  }
+</div>

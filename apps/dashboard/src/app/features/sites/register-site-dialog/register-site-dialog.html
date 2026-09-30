@@ -7,12 +7,12 @@
   <ng-template #header>
     <div class="head">
       <strong>Register a site</strong>
-      <small>Step {{ step() }} of 4 · {{ stepName() }}</small>
+      <small>Step {{ step() }} of 3 · {{ stepName() }}</small>
     </div>
   </ng-template>
 
   <div class="rail">
-    @for (n of [1, 2, 3, 4]; track n) {
+    @for (n of [1, 2, 3]; track n) {
       <span class="tick" [class.on]="step() >= n" [class.current]="step() === n"></span>
     }
   </div>
@@ -92,7 +92,9 @@
               [options]="branches()"
               [loading]="loadingBranches()"
               [(ngModel)]="branch"
-              placeholder="Choose a branch"
+              [editable]="true"
+              [filter]="branches().length > 8"
+              placeholder="Choose a branch, or type one"
               [fluid]="true"
               styleClass="nested" />
           }
@@ -112,48 +114,8 @@
     </div>
   }
 
-  <!-- ── 3. Prove you own it ───────────────────────────── -->
+  <!-- ── 3. Stamp the source locations ─────────────────── -->
   @if (step() === 3) {
-    <div class="form">
-      <p class="lede">
-        Add one of these to <code>{{ hostname || 'your domain' }}</code>, then
-        press Verify. Without it anyone could claim this hostname and
-        collect the feedback left on it.
-      </p>
-
-      <div class="field">
-        <label>DNS record</label>
-        <div class="snippet">
-          <code>TXT  _inline-edit.{{ hostname || 'acme.com' }}  {{ 'shown on the site page once registered' }}</code>
-          <p-button icon="pi pi-copy" [text]="true" severity="secondary" size="small" ariaLabel="Copy" />
-        </div>
-      </div>
-
-      <div class="or"><span>or</span></div>
-
-      <div class="field">
-        <label>Meta tag in your &lt;head&gt;</label>
-        <div class="snippet">
-          <code>&lt;meta name="inline-edit-verification" content="{{ 'shown on the site page once registered' }}" /&gt;</code>
-          <p-button icon="pi pi-copy" [text]="true" severity="secondary" size="small" ariaLabel="Copy" />
-        </div>
-      </div>
-
-      @if (error()) {
-        <p-message severity="error" [closable]="false">{{ error() }}</p-message>
-      }
-
-      @if (verifyFailed()) {
-        <p-message severity="warn" [closable]="false">
-          Not found yet. DNS can take a few minutes to propagate — you can
-          carry on and verify later.
-        </p-message>
-      }
-    </div>
-  }
-
-  <!-- ── 4. Stamp the source locations ─────────────────── -->
-  @if (step() === 4) {
     <div class="form">
       <p class="lede">
         Last thing. The editor traces a heading on the page back to the line
@@ -196,14 +158,13 @@
     @if (step() > 1) {
       <p-button label="Back" [text]="true" severity="secondary" (onClick)="step.set(step() - 1)" />
     }
-    @if (step() === 3) {
-      <p-button label="Skip for now" [text]="true" severity="secondary" (onClick)="step.set(4)" />
+    @if (step() === 2) {
       <p-button
         [label]="saving() ? 'Registering…' : 'Register site'"
         icon="pi pi-check"
-        [disabled]="saving()"
+        [disabled]="saving() || !canContinue()"
         (onClick)="register()" />
-    } @else if (step() === 4) {
+    } @else if (step() === 3) {
       <p-button label="Finish" icon="pi pi-check" (onClick)="finish()" />
     } @else {
       <p-button label="Continue" icon="pi pi-arrow-right" iconPos="right" [disabled]="!canContinue()" (onClick)="step.set(step() + 1)" />

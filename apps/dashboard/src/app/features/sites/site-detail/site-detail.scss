@@ -21,3 +21,11 @@
 .embed label { font-size: var(--ds-t-caption); font-weight: 600; color: var(--p-text-color); }
 .embed .snippet { display: block; padding: var(--ds-s-3); border-radius: var(--ds-radius); background: var(--p-content-background); border: 1px solid var(--ds-hairline); font-size: var(--ds-t-caption); overflow-wrap: anywhere; }
 .embed p-button { justify-self: start; }
+
+/* ── Install tab ─────────────────────────────────────────── */
+.lede { margin: 0; font-size: var(--ds-t-caption); line-height: 1.6; color: var(--p-text-muted-color); }
+.snippet { display: flex; align-items: flex-start; gap: var(--ds-s-2); padding: var(--ds-s-3); border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius); background: var(--p-content-background); }
+.snippet code { flex: 1; font-size: var(--ds-t-caption); overflow-wrap: anywhere; }
+/* Code blocks keep their own newlines; the inline install line does not. */
+.snippet-block pre { flex: 1; margin: 0; overflow-x: auto; }
+.snippet-block pre code { white-space: pre; overflow-wrap: normal; }

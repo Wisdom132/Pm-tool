@@ -154,6 +154,21 @@ export class ConnectionsService {
   }
 
   /**
+   * The branches of one repository.
+   *
+   * Needed before a site exists, which is why it hangs off the connection
+   * rather than the site: `/editing/branches` takes an environmentId, and at
+   * registration time there is no environment yet. Without this the branch
+   * field in the register dialog had no source of options at all — it
+   * offered an empty list and no way to type into it, so a site could not
+   * be registered against a fixed branch.
+   */
+  async branches(organisationId: string, connectionId: string, repository: string) {
+    const provider = await this.providers.open(organisationId, connectionId, repository);
+    return provider.listBranches();
+  }
+
+  /**
    * Revoke a connection.
    *
    * Refused while sites still point at it. Cascading would silently break

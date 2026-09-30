@@ -144,12 +144,55 @@ function getBuildInfo() {
 }
 
 /**
+ * What the host says this deployment is: 'production', 'preview', or null
+ * when we do not recognise the host.
+ *
+ * Every one of these is the host's own variable, documented by it. Guessing
+ * from a branch name was considered and rejected — plenty of teams deploy
+ * production from something other than `main`, and being wrong in that
+ * direction publishes their source layout.
+ */
+function hostDeployKind(env = process.env) {
+  // Vercel: 'production' | 'preview' | 'development'
+  if (env.VERCEL_ENV) return env.VERCEL_ENV === 'production' ? 'production' : 'preview';
+
+  // Netlify: 'production' | 'deploy-preview' | 'branch-deploy' | 'dev'
+  if (env.CONTEXT) return env.CONTEXT === 'production' ? 'production' : 'preview';
+
+  // Cloudflare Pages names the production branch, so a build of any other
+  // branch is a preview.
+  if (env.CF_PAGES_BRANCH && env.CF_PAGES_BRANCH !== env.CF_PAGES_PRODUCTION_BRANCH) {
+    return env.CF_PAGES_PRODUCTION_BRANCH ? 'preview' : null;
+  }
+
+  // Render: 'production' | 'preview'
+  if (env.IS_PULL_REQUEST === 'true') return 'preview';
+
+  // Amplify sets the branch but says nothing about its role, and GitHub
+  // Actions builds are not deployments. Neither can answer this.
+  return null;
+}
+
+/**
  * Whether annotation should run.
  *
- * INLINE_EDIT is the explicit switch, and is what preview deployments set —
- * they build with NODE_ENV=production, so the dev heuristic alone would never
- * fire there. When the flag is unset each plugin's own dev signal decides, so
- * local development keeps working with no configuration.
+ * Three rules, in this order, and the order is the safety property:
+ *
+ * 1. **`INLINE_EDIT` wins, both ways.** An explicit `0` turns annotation off
+ *    even on a preview deploy, which is the only way to opt a sensitive
+ *    branch out.
+ * 2. **A host that calls this production is obeyed.** Nothing below may
+ *    turn annotation on after that. Annotations name every source file on
+ *    the page, and publishing a company's directory structure because a
+ *    heuristic misfired is not a recoverable mistake.
+ * 3. **Otherwise: preview deploys and dev builds are annotated**, and
+ *    everything else is not.
+ *
+ * Rule 3 is the change that makes this usable. Previously a preview deploy
+ * built with NODE_ENV=production and no flag, so the dev signal never fired
+ * and the deploy an editor was pointed at had no annotations at all — the
+ * most common way for this product to appear broken, and one that required
+ * reading the plugin source to diagnose.
  *
  * @param {boolean} devSignal  the caller's notion of "this is a dev build"
  * @param {object}  env
@@ -160,6 +203,17 @@ function isAnnotationEnabled(devSignal, env = process.env) {
     const v = String(flag).toLowerCase();
     return v === '1' || v === 'true' || v === 'yes';
   }
+
+  const kind = hostDeployKind(env);
+  if (kind === 'production') return false;
+  if (kind === 'preview') return true;
+
+  // Anything else — an unrecognised host, a bare `node` process — stays
+  // off unless its own dev signal says otherwise. `NODE_ENV !== 'production'`
+  // was tried here and removed: it is true in a test runner, in a CI job,
+  // and in any process that never set it, so it turned annotation on in
+  // places nobody was deploying from. Off-by-default is the only safe
+  // answer when we cannot tell what a build is for.
   return Boolean(devSignal);
 }
 
@@ -196,6 +250,7 @@ module.exports = {
   resolveBuildInfo,
   getBuildInfo,
   isAnnotationEnabled,
+  hostDeployKind,
   buildInfoAttrs,
   buildInfoAttrString,
   stampHtmlTag,

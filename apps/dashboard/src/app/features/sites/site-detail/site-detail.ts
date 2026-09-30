@@ -1,11 +1,13 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Button } from 'primeng/button';
 import { InputText } from 'primeng/inputtext';
 import { Message } from 'primeng/message';
 import { ToggleSwitch } from 'primeng/toggleswitch';
+import { Select } from 'primeng/select';
+import { Tabs, TabList, Tab, TabPanels, TabPanel } from 'primeng/tabs';
 import { Skeleton } from 'primeng/skeleton';
 import { PageHeader, ErrorState } from '../../../../design-system';
 import { AuditApi } from '../../../core/api/audit-api';
@@ -14,6 +16,7 @@ import { TeamsApi } from '../../../core/api/teams-api';
 import { createLoader } from '../../../core/load-state';
 import { Session } from '../../../core/session';
 import { environment } from '../../../../environments/environment';
+import { FRAMEWORKS, PACKAGE, guessFramework, pluginSnippet, type Framework } from '../../../core/build-plugin';
 import type { AuditEvent, SiteEnvironmentDetail, Team } from '../../../core/api-types';
 
 /**
@@ -27,7 +30,7 @@ import type { AuditEvent, SiteEnvironmentDetail, Team } from '../../../core/api-
   selector: 'app-site-detail',
   templateUrl: './site-detail.html',
   styleUrl: './site-detail.scss',
-  imports: [DatePipe, FormsModule, RouterLink, Button, InputText, Message, Skeleton, ToggleSwitch, PageHeader, ErrorState],
+  imports: [DatePipe, FormsModule, RouterLink, Button, InputText, Message, Skeleton, ToggleSwitch, Select, Tabs, TabList, Tab, TabPanels, TabPanel, PageHeader, ErrorState],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SiteDetail {
@@ -49,8 +52,27 @@ export class SiteDetail {
   protected branch = '';
   protected feedbackWidget = false;
 
-  /** Copied, not typed. Getting one character wrong here is a silent failure. */
-  protected readonly copied = signal(false);
+  // ── Install guide ──────────────────────────────────────
+  protected readonly tab = signal<'settings' | 'install'>('settings');
+  protected readonly frameworks = FRAMEWORKS;
+  protected readonly pkg = PACKAGE;
+  protected readonly framework = signal<Framework>('react');
+  protected readonly snippet = computed(() => pluginSnippet(this.framework()));
+  /**
+   * Which snippet was last copied, so the tick lands on the right button.
+   *
+   * Keyed rather than boolean: there are three copyable snippets on this
+   * page now, and a shared flag ticks all of them at once.
+   */
+  protected readonly copied = signal<'install' | 'code' | 'embed' | null>(null);
+
+  protected copy(which: 'install' | 'code' | 'embed', text: string) {
+    void navigator.clipboard?.writeText(text).then(() => {
+      this.copied.set(which);
+      setTimeout(() => this.copied.set(null), 2000);
+    });
+  }
+
 
   constructor() {
     this.reload();
@@ -63,6 +85,9 @@ export class SiteDetail {
         this.name = site.site.name;
         this.branch = site.branch ?? '';
         this.feedbackWidget = site.site.feedbackWidget;
+        // A hint from the repository name, so the likely framework is
+        // already chosen. Every option stays selectable.
+        this.framework.set(guessFramework(site.repository));
         this.loadRelated(site);
       },
       // Let the loader own the failure path, so the error state renders.
@@ -158,10 +183,7 @@ export class SiteDetail {
   }
 
   protected copyEmbed() {
-    void navigator.clipboard?.writeText(this.embedSnippet()).then(() => {
-      this.copied.set(true);
-      setTimeout(() => this.copied.set(false), 2000);
-    });
+    this.copy('embed', this.embedSnippet());
   }
 
   /** A wildcard hostname is not a URL, so there is nothing to open. */

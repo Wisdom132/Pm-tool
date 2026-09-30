@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Button } from 'primeng/button';
 import { Tag } from 'primeng/tag';
@@ -55,6 +55,20 @@ export class Connections {
   constructor() {
     this.readCallback();
     this.reload();
+
+    // The install now happens in a second tab, so this one can be looking
+    // at a list that went stale while it sat in the background. Refetching
+    // on focus is what makes "come back when you're done" true without
+    // asking anyone to reload the page.
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') this.reload();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    inject(DestroyRef).onDestroy(() => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    });
   }
 
   protected reload() {

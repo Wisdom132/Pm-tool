@@ -27,7 +27,11 @@ export class AuthController {
   @Public()
   @Post('request-link')
   requestLink(@Body() dto: RequestLinkDto) {
-    const appUrl = process.env.APP_URL ?? 'http://localhost:4300';
+    // 4200 is where `ng serve` actually listens, and what DASHBOARD_URL in
+    // .env.example already says. The old 4300 default sent every sign-in
+    // link to a port nothing was bound to — the link arrived, and clicking
+    // it went nowhere.
+    const appUrl = process.env.APP_URL ?? 'http://localhost:4200';
     return this.auth.requestLink(dto.email, appUrl);
   }
 

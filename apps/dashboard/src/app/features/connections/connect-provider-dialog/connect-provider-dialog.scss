@@ -27,3 +27,4 @@
 .waiting small { font-size: var(--ds-t-small); color: var(--p-text-muted-color); }
 .cross { width: 48px; height: 48px; border-radius: 50%; background: var(--ds-danger-soft, var(--ds-muted-bg)); color: var(--p-red-500, #dc2626); display: grid; place-items: center; font-size: 20px; }
 :host ::ng-deep .spin { width: 40px; height: 40px; }
+.tick { width: 48px; height: 48px; border-radius: 50%; background: var(--ds-tint); color: var(--p-primary-color); display: grid; place-items: center; font-size: 20px; }

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   resolveBuildInfo,
   isAnnotationEnabled,
+  hostDeployKind,
   buildInfoAttrs,
   buildInfoAttrString,
   stampHtmlTag,
@@ -263,5 +264,97 @@ describe('stampHtmlTag', () => {
 
   it('handles an <html> tag with no attributes', () => {
     expect(stampHtmlTag('<html>x</html>', info)).toContain('<html data-edit-branch="main"');
+  });
+});
+
+// ============================================================
+//  Deploy-kind detection
+//
+//  The safety property is one-directional: a host that says
+//  "production" must never be overridden by anything below it.
+//  Annotations name every source file on the page, so a false
+//  positive publishes a company's directory structure — and
+//  unlike a broken build, nobody notices.
+// ============================================================
+describe('hostDeployKind', () => {
+  it('reads Vercel', () => {
+    expect(hostDeployKind({ VERCEL_ENV: 'production' })).toBe('production');
+    expect(hostDeployKind({ VERCEL_ENV: 'preview' })).toBe('preview');
+    expect(hostDeployKind({ VERCEL_ENV: 'development' })).toBe('preview');
+  });
+
+  it('reads Netlify', () => {
+    expect(hostDeployKind({ CONTEXT: 'production' })).toBe('production');
+    expect(hostDeployKind({ CONTEXT: 'deploy-preview' })).toBe('preview');
+    expect(hostDeployKind({ CONTEXT: 'branch-deploy' })).toBe('preview');
+  });
+
+  it('reads Cloudflare Pages by comparing against its production branch', () => {
+    expect(
+      hostDeployKind({ CF_PAGES_BRANCH: 'feat/x', CF_PAGES_PRODUCTION_BRANCH: 'main' })
+    ).toBe('preview');
+    expect(
+      hostDeployKind({ CF_PAGES_BRANCH: 'main', CF_PAGES_PRODUCTION_BRANCH: 'main' })
+    ).toBeNull();
+  });
+
+  it('reads a Render pull-request deploy', () => {
+    expect(hostDeployKind({ IS_PULL_REQUEST: 'true' })).toBe('preview');
+  });
+
+  it('says nothing for hosts that cannot answer', () => {
+    // Amplify sets a branch but never says what it is for, and a GitHub
+    // Actions run is not a deployment at all. Guessing from the branch name
+    // would publish source layout for every team whose production branch is
+    // not called "main".
+    expect(hostDeployKind({ AWS_BRANCH: 'main' })).toBeNull();
+    expect(hostDeployKind({ GITHUB_ACTIONS: 'true', GITHUB_REF_NAME: 'main' })).toBeNull();
+    expect(hostDeployKind({})).toBeNull();
+  });
+});
+
+describe('isAnnotationEnabled — automatic on preview deploys', () => {
+  it('annotates a preview deploy with no configuration at all', () => {
+    // The change this makes. A preview builds with NODE_ENV=production, so
+    // the dev signal never fired and the deploy an editor was sent to had
+    // no annotations — the most common way this product looked broken.
+    expect(isAnnotationEnabled(false, { VERCEL_ENV: 'preview', NODE_ENV: 'production' })).toBe(true);
+    expect(isAnnotationEnabled(false, { CONTEXT: 'deploy-preview', NODE_ENV: 'production' })).toBe(true);
+  });
+
+  it('never annotates a production deploy', () => {
+    for (const env of [
+      { VERCEL_ENV: 'production' },
+      { CONTEXT: 'production' },
+      { VERCEL_ENV: 'production', NODE_ENV: 'development' },
+      // Even a dev signal must not override the host.
+      { CONTEXT: 'production', NODE_ENV: 'development' },
+    ]) {
+      expect(isAnnotationEnabled(true, env), JSON.stringify(env)).toBe(false);
+    }
+  });
+
+  it('lets INLINE_EDIT=0 opt a preview deploy out', () => {
+    // The only way to exclude a sensitive branch from an annotated host.
+    expect(isAnnotationEnabled(true, { VERCEL_ENV: 'preview', INLINE_EDIT: '0' })).toBe(false);
+  });
+
+  it('lets INLINE_EDIT=1 force it on an unrecognised host', () => {
+    expect(isAnnotationEnabled(false, { NODE_ENV: 'production', INLINE_EDIT: '1' })).toBe(true);
+  });
+
+  it('does not infer anything from NODE_ENV', () => {
+    // An earlier version of this treated `NODE_ENV !== 'production'` as a
+    // signal. It is true in a test runner, in a CI job, and in any process
+    // that never set it — so annotation switched on in places nobody was
+    // deploying from. The existing "a production build must not annotate"
+    // test caught it, which is exactly what that test is for.
+    for (const env of [{ NODE_ENV: 'staging' }, { NODE_ENV: 'test' }, { NODE_ENV: '' }, {}]) {
+      expect(isAnnotationEnabled(false, env), JSON.stringify(env)).toBe(false);
+    }
+  });
+
+  it('still annotates plain local development', () => {
+    expect(isAnnotationEnabled(true, {})).toBe(true);
   });
 });

@@ -24,6 +24,16 @@ export class ConnectionsApi {
     return this.api.get<Repository[]>(`/connections/${id}/repositories`);
   }
 
+  /**
+   * Branches of one repository.
+   *
+   * On the connection, not the site: at registration time there is no site
+   * yet, which is exactly when this list is needed.
+   */
+  branches(id: string, repository: string): Observable<string[]> {
+    return this.api.get<string[]>(`/connections/${id}/branches`, { repository });
+  }
+
   check(id: string, repository: string): Observable<{ ok: boolean; branches: number }> {
     return this.api.post(`/connections/${id}/check`, undefined, { repository });
   }

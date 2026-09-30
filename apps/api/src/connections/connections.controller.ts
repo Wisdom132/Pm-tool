@@ -48,6 +48,16 @@ export class ConnectionsController {
     return this.connections.repositories(org.organisationId, id);
   }
 
+  /** Branches of one repository, for the register-a-site dialog. */
+  @Get(':id/branches')
+  branches(
+    @Org() org: OrgContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: CheckConnectionDto,
+  ) {
+    return this.connections.branches(org.organisationId, id, query.repository);
+  }
+
   /** Ask the provider something cheap, to prove the connection still works. */
   @Post(':id/check')
   check(@Org() org: OrgContext, @Param('id', ParseUUIDPipe) id: string, @Query() query: CheckConnectionDto) {

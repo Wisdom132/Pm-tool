@@ -100,4 +100,4 @@
 </div>
 }
 
-<app-register-site-dialog [(visible)]="registering" />
+<app-register-site-dialog [(visible)]="registering" (registered)="reload()" />

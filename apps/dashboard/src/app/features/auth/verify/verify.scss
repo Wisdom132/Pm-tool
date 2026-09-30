@@ -1,0 +1,4 @@
+.auth-icon { width: 48px; height: 48px; border-radius: var(--ds-r-lg); background: var(--ds-tint); color: var(--p-primary-color); display: grid; place-items: center; font-size: 18px; }
+/* A failed link is not a neutral state — it needs to read as something that
+   went wrong, not as another step in the flow. */
+.auth-icon-error { background: var(--ds-tint-danger, rgba(239, 68, 68, 0.12)); color: var(--p-red-500, #ef4444); }

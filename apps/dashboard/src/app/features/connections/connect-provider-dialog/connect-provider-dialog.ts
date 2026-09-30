@@ -38,7 +38,9 @@ export class ConnectProviderDialog {
 
   private readonly api = inject(ConnectionsApi);
 
-  protected readonly step = signal<'choose' | 'review' | 'authorising' | 'failed'>('choose');
+  protected readonly step = signal<'choose' | 'review' | 'authorising' | 'waiting' | 'failed'>(
+    'choose'
+  );
   protected readonly error = signal<string>('');
   protected readonly selected = signal<ProviderOption | null>(null);
 
@@ -83,7 +85,9 @@ export class ConnectProviderDialog {
       case 'review':
         return `What ${this.selected()?.name} will be asked to allow`;
       case 'authorising':
-        return 'Approve the installation to continue';
+        return 'Opening a new tab';
+      case 'waiting':
+        return 'Finish in the other tab';
       default:
         return 'Something went wrong before you left this page';
     }
@@ -95,20 +99,37 @@ export class ConnectProviderDialog {
   }
 
   /**
-   * Leave for the provider.
+   * Leave for the provider, in a new tab.
    *
-   * A full-page navigation rather than a popup: the install flow is several
-   * screens on GitHub's side, it can require an organisation owner's
-   * approval, and a popup that is blocked or closed leaves this dialog
-   * waiting forever. The callback brings the admin back to
-   * `/connections?connected=…`, which is where the outcome is reported.
+   * The install is several screens on GitHub's side and can stall on an
+   * organisation owner's approval. Navigating the whole window there means
+   * an admin who gives up, or whose approval is pending, has lost the
+   * dashboard along with whatever else they were part-way through.
+   *
+   * The tab still reports its own outcome: the callback redirects to
+   * `/connections?connected=…`, so the new tab lands on this same screen
+   * with the result. This one refreshes when it regains focus, so both
+   * agree without either being reloaded by hand.
+   *
+   * A blocked popup falls back to navigating this window. Returning null is
+   * the browser saying no, and a dialog that spun forever after a blocked
+   * popup would be the worse failure — it is the reason this was a
+   * full-page navigation to begin with.
    */
   protected authorise() {
     this.step.set('authorising');
 
     this.api.githubInstallUrl().subscribe({
       next: ({ url }) => {
-        // Not router.navigate: this is a different origin.
+        // noopener: the opened tab must not get a handle on this window.
+        const tab = window.open(url, '_blank', 'noopener,noreferrer');
+
+        if (tab) {
+          this.step.set('waiting');
+          return;
+        }
+
+        // Blocked. Not router.navigate: this is a different origin.
         window.location.assign(url);
       },
       error: (err: Error) => {
@@ -116,6 +137,12 @@ export class ConnectProviderDialog {
         this.step.set('failed');
       },
     });
+  }
+
+  /** Nothing left to do here — the other tab is carrying the flow. */
+  protected done() {
+    this.visible.set(false);
+    this.reset();
   }
 
   protected reset() {

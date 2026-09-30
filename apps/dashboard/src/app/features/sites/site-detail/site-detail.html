@@ -30,144 +30,222 @@
     </p-message>
   }
 
-  @if (!s.site.verifiedAt) {
-    <p-message severity="info" [closable]="false">
-      This hostname is not verified. Add the TXT record
-      <code>_inline-edit.{{ s.hostname }}</code> with the value
-      <code>{{ s.site.verificationToken }}</code>, or a meta tag with the
-      same value. Editing works either way — but the public feedback widget
-      will not collect anything until this is verified, because otherwise
-      anyone could claim this hostname and receive feedback meant for you.
-    </p-message>
-  }
+  <p-tabs [value]="tab()" (valueChange)="tab.set($any($event))">
+    <p-tablist>
+      <p-tab value="settings">Settings</p-tab>
+      <p-tab value="install">Install</p-tab>
+    </p-tablist>
 
-  <section class="ds-surface panel">
-    <h2>Public feedback widget</h2>
+    <p-tabpanels>
+      <p-tabpanel value="settings">
+      <section class="ds-surface panel">
+        <h2>Public feedback widget</h2>
 
-    <div class="widget-row">
-      <p-toggleswitch
-        [ngModel]="feedbackWidget"
-        (ngModelChange)="toggleWidget(s, $event)"
-        [disabled]="saving() || !isAdmin()"
-        inputId="widget" />
-      <label for="widget">
-        {{ feedbackWidget ? 'On — this site is accepting public feedback' : 'Off' }}
-      </label>
-    </div>
+        <div class="widget-row">
+          <p-toggleswitch
+            [ngModel]="feedbackWidget"
+            (ngModelChange)="toggleWidget(s, $event)"
+            [disabled]="saving() || !isAdmin()"
+            inputId="widget" />
+          <label for="widget">
+            {{ feedbackWidget ? 'On — this site is accepting public feedback' : 'Off' }}
+          </label>
+        </div>
 
-    <small>
-      Lets anyone on the page leave a comment without an account, pinned to
-      the element they are talking about. Off by default: switching it on
-      opens an endpoint that accepts comments and screenshots from any
-      visitor. Turning it off stops collection immediately.
-    </small>
+        <small>
+          Lets anyone on the page leave a comment without an account, pinned to
+          the element they are talking about. Off by default: switching it on
+          opens an endpoint that accepts comments and screenshots from any
+          visitor. Turning it off stops collection immediately.
+        </small>
 
-    @if (feedbackWidget && !s.site.verifiedAt) {
-      <p-message severity="warn" [closable]="false">
-        The widget is on, but this hostname is not verified yet, so nothing
-        will be collected until it is.
-      </p-message>
-    }
-
-    @if (feedbackWidget) {
-      <div class="embed">
-        <label>Add this to your pages</label>
-        <code class="snippet">{{ embedSnippet() }}</code>
-        <p-button
-          [label]="copied() ? 'Copied' : 'Copy'"
-          [icon]="copied() ? 'pi pi-check' : 'pi pi-copy'"
-          size="small"
-          [text]="true"
-          (onClick)="copyEmbed()" />
-      </div>
-      <small>
-        Nothing else to configure — the site is identified by its own
-        hostname, server-side.
-      </small>
-    }
-  </section>
-
-  <section class="ds-surface panel">
-    <h2>Where it points</h2>
-
-    <div class="field">
-      <label for="name">Name</label>
-      <input pInputText id="name" [(ngModel)]="name" />
-      <small>Shown in lists. The hostname is what the editor matches on.</small>
-    </div>
-
-    <div class="field">
-      <label>Hostname</label>
-      <!-- Read-only: the hostname is the key the extension resolves
-           against, and the API has no way to change it. Register a new
-           environment instead. -->
-      <input pInputText [value]="s.hostname" disabled />
-    </div>
-
-    <div class="field">
-      <label>Repository</label>
-      <input pInputText [value]="s.repository" disabled />
-      <small>
-        Re-pointing a site at a different repository is not offered here —
-        it would silently redirect every future edit. Register a new site.
-      </small>
-    </div>
-
-    <div class="field">
-      <label for="branch">Branch</label>
-      <input
-        pInputText
-        id="branch"
-        [(ngModel)]="branch"
-        placeholder="Read from the page" />
-      <small>
-        Leaving this empty makes the branch come from the page, which is what
-        preview deploys need. Changing it sends every future edit on this
-        hostname somewhere else.
-      </small>
-    </div>
-
-    <div class="actions">
-      <p-button
-        [label]="saving() ? 'Saving…' : 'Save changes'"
-        size="small"
-        [disabled]="saving() || !changed(s)"
-        (onClick)="save(s)" />
-    </div>
-  </section>
-
-  <section class="ds-surface panel">
-    <h2>Who can edit it</h2>
-    @if (teams().length) {
-      <div class="teams">
-        @for (t of teams(); track t.id) {
-          <a class="team" [routerLink]="['/teams', t.id]">
-            <strong>{{ t.name }}</strong>
-            <small>{{ t.members.length }} {{ t.members.length === 1 ? 'person' : 'people' }}</small>
-          </a>
+        @if (feedbackWidget && !s.site.verifiedAt) {
+          <p-message severity="warn" [closable]="false">
+            Nothing will be collected until {{ s.hostname }} is verified —
+            otherwise anyone could claim this hostname and receive the
+            feedback meant for you. Add the TXT record
+            <code>_inline-edit.{{ s.hostname }}</code>, or a meta tag, with
+            the value <code>{{ s.site.verificationToken }}</code>.
+          </p-message>
         }
-      </div>
-    } @else {
-      <p class="muted">No team covers this site, so only admins can edit it.</p>
-    }
-  </section>
 
-  @if (isAdmin()) {
-  <section class="ds-surface panel">
-    <h2>Recent activity</h2>
-    @if (activity().length) {
-      <ul class="edits">
-        @for (e of activity(); track e.id) {
-          <li>
-            <code>{{ e.action }}</code>
-            <span>{{ e.actor ? (e.actor.name || e.actor.email) : 'a deleted account' }}</span>
-            <small>{{ e.createdAt | date: 'd MMM, HH:mm' }}</small>
-          </li>
+        @if (feedbackWidget) {
+          <div class="embed">
+            <label>Add this to your pages</label>
+            <code class="snippet">{{ embedSnippet() }}</code>
+            <p-button
+              [label]="copied() === 'embed' ? 'Copied' : 'Copy'"
+              [icon]="copied() === 'embed' ? 'pi pi-check' : 'pi pi-copy'"
+              size="small"
+              [text]="true"
+              (onClick)="copyEmbed()" />
+          </div>
+          <small>
+            Nothing else to configure — the site is identified by its own
+            hostname, server-side.
+          </small>
         }
-      </ul>
-    } @else {
-      <p class="muted">Nothing recorded for this hostname yet.</p>
-    }
-  </section>
-  }
+      </section>
+
+      <section class="ds-surface panel">
+        <h2>Where it points</h2>
+
+        <div class="field">
+          <label for="name">Name</label>
+          <input pInputText id="name" [(ngModel)]="name" />
+          <small>Shown in lists. The hostname is what the editor matches on.</small>
+        </div>
+
+        <div class="field">
+          <label>Hostname</label>
+          <!-- Read-only: the hostname is the key the extension resolves
+               against, and the API has no way to change it. Register a new
+               environment instead. -->
+          <input pInputText [value]="s.hostname" disabled />
+        </div>
+
+        <div class="field">
+          <label>Repository</label>
+          <input pInputText [value]="s.repository" disabled />
+          <small>
+            Re-pointing a site at a different repository is not offered here —
+            it would silently redirect every future edit. Register a new site.
+          </small>
+        </div>
+
+        <div class="field">
+          <label for="branch">Branch</label>
+          <input
+            pInputText
+            id="branch"
+            [(ngModel)]="branch"
+            placeholder="Read from the page" />
+          <small>
+            Leaving this empty makes the branch come from the page, which is what
+            preview deploys need. Changing it sends every future edit on this
+            hostname somewhere else.
+          </small>
+        </div>
+
+        <div class="actions">
+          <p-button
+            [label]="saving() ? 'Saving…' : 'Save changes'"
+            size="small"
+            [disabled]="saving() || !changed(s)"
+            (onClick)="save(s)" />
+        </div>
+      </section>
+
+      <section class="ds-surface panel">
+        <h2>Who can edit it</h2>
+        @if (teams().length) {
+          <div class="teams">
+            @for (t of teams(); track t.id) {
+              <a class="team" [routerLink]="['/teams', t.id]">
+                <strong>{{ t.name }}</strong>
+                <small>{{ t.members.length }} {{ t.members.length === 1 ? 'person' : 'people' }}</small>
+              </a>
+            }
+          </div>
+        } @else {
+          <p class="muted">No team covers this site, so only admins can edit it.</p>
+        }
+      </section>
+
+      @if (isAdmin()) {
+      <section class="ds-surface panel">
+        <h2>Recent activity</h2>
+        @if (activity().length) {
+          <ul class="edits">
+            @for (e of activity(); track e.id) {
+              <li>
+                <code>{{ e.action }}</code>
+                <span>{{ e.actor ? (e.actor.name || e.actor.email) : 'a deleted account' }}</span>
+                <small>{{ e.createdAt | date: 'd MMM, HH:mm' }}</small>
+              </li>
+            }
+          </ul>
+        } @else {
+          <p class="muted">Nothing recorded for this hostname yet.</p>
+        }
+      </section>
+      }
+      </p-tabpanel>
+
+      <!-- The one instruction that decides whether the editor works at all.
+           It was shown once, in the register dialog, and then gone — so
+           anyone who clicked past it, or joined afterwards, had no way back
+           to it. -->
+      <p-tabpanel value="install">
+        <section class="ds-surface panel">
+          <h2>Build plugin</h2>
+          <p class="lede">
+            The editor traces a heading on the page back to the line that
+            produced it, and only a build plugin can record that. Without
+            this, {{ s.hostname }} loads but almost nothing is editable.
+          </p>
+
+          <div class="field">
+            <label for="fw">Framework</label>
+            <p-select
+              inputId="fw"
+              [options]="frameworks"
+              [ngModel]="framework()"
+              (ngModelChange)="framework.set($event)"
+              optionLabel="label"
+              optionValue="value"
+              [fluid]="true" />
+          </div>
+
+          <div class="field">
+            <label>Install</label>
+            <div class="snippet">
+              <code>npm i -D {{ pkg }}</code>
+              <p-button
+                [icon]="copied() === 'install' ? 'pi pi-check' : 'pi pi-copy'"
+                [text]="true"
+                severity="secondary"
+                size="small"
+                ariaLabel="Copy"
+                (onClick)="copy('install', 'npm i -D ' + pkg)" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label>{{ snippet().file }}</label>
+            <div class="snippet snippet-block">
+              <pre><code>{{ snippet().code }}</code></pre>
+              <p-button
+                [icon]="copied() === 'code' ? 'pi pi-check' : 'pi pi-copy'"
+                [text]="true"
+                severity="secondary"
+                size="small"
+                ariaLabel="Copy"
+                (onClick)="copy('code', snippet().code)" />
+            </div>
+            @if (snippet().note) {
+              <small>{{ snippet().note }}</small>
+            }
+          </div>
+
+          <p-message severity="info" [closable]="false">
+            Nothing is annotated unless <code>INLINE_EDIT=1</code> is set, so
+            your normal builds are untouched. Set it on the deploy your
+            editors use — never on production, where it would expose your
+            source layout.
+          </p-message>
+        </section>
+
+        <section class="ds-surface panel">
+          <h2>Is it working?</h2>
+          <p class="lede">
+            Open {{ s.hostname }} with the extension and pick Inspect. Every
+            element should name a file. If they all say
+            <em>no source map</em>, the plugin is not in that build — check
+            <code>INLINE_EDIT</code> is set on the deploy you are looking at.
+          </p>
+        </section>
+      </p-tabpanel>
+    </p-tabpanels>
+  </p-tabs>
 }

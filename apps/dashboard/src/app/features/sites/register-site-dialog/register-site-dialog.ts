@@ -73,14 +73,40 @@ export class RegisterSiteDialog {
   }
 
   /**
-   * Branch options need a site to read them from, and there is none yet —
-   * `/editing/branches` takes an environmentId. So the list stays empty and
-   * the field accepts what the person types, which is also what makes a
-   * brand-new branch nameable.
+   * Load the branches for the chosen repository.
+   *
+   * This used to do nothing but clear the field, on the reasoning that
+   * branches need a site to read them from. They do not — they need a
+   * *connection*, which exists by this step. The result was an empty
+   * dropdown that could not be typed into either, so a fixed branch could
+   * never be chosen and the dialog could not be completed.
+   *
+   * The field stays editable on top of the list, so a branch that does not
+   * exist yet is still nameable.
    */
   protected onRepositoryChange(repository: string | null) {
     this.repository = repository;
     this.branch = null;
+    this.branches.set([]);
+
+    if (!repository || !this.connectionId) return;
+
+    this.loadingBranches.set(true);
+    this.connectionsApi.branches(this.connectionId, repository).subscribe({
+      next: (names) => {
+        this.loadingBranches.set(false);
+        this.branches.set(names);
+        // One branch is the common case, and making somebody open a list to
+        // pick the only item in it is a step for its own sake.
+        if (names.length === 1) this.branch = names[0];
+      },
+      error: () => {
+        // Not fatal: the field is editable, so a name can still be typed.
+        // Saying nothing is better than an error over a list that is only
+        // a convenience.
+        this.loadingBranches.set(false);
+      },
+    });
   }
 
   protected readonly step = signal(1);
@@ -91,7 +117,6 @@ export class RegisterSiteDialog {
   protected repository: string | null = null;
   protected branch: string | null = null;
   protected readonly branchMode = signal<'fixed' | 'page'>('fixed');
-  protected readonly verifyFailed = signal(false);
   protected readonly framework = signal<Framework>('nuxt');
 
   private readonly sitesApi = inject(SitesApi);
@@ -164,7 +189,7 @@ export class RegisterSiteDialog {
   });
 
   protected stepName() {
-    return ['Hostname', 'Repository', 'Ownership', 'Build plugin'][this.step() - 1];
+    return ['Hostname', 'Repository', 'Build plugin'][this.step() - 1];
   }
 
   protected canContinue() {
@@ -178,10 +203,15 @@ export class RegisterSiteDialog {
   /**
    * Create the site.
    *
-   * Ownership verification is *not* performed here — nothing checks the DNS
-   * record or the meta tag yet (P2.5). The step exists because the token has
-   * to be shown somewhere, and skipping it is allowed, which is what the
-   * copy on that step says.
+   * There is no ownership step. It asked for a DNS record or meta tag
+   * containing a token that does not exist until the site is registered,
+   * and offered a Verify button that was not on the screen — because
+   * nothing checks either one yet (P2.5). A step that cannot be completed,
+   * in front of the step that actually matters, is worse than no step.
+   *
+   * The token is still generated on registration and shown on the site's
+   * own page, so verification is reachable the moment P2.5 lands. Until
+   * then it gates only the public feedback widget, never editing.
    */
   protected register() {
     this.saving.set(true);
@@ -202,7 +232,7 @@ export class RegisterSiteDialog {
           this.registered.emit();
           // Straight to the last step: the plugin snippet is the thing they
           // still have to act on, and it does not depend on the response.
-          this.step.set(4);
+          this.step.set(3);
         },
         error: (err: Error) => {
           this.saving.set(false);
@@ -226,6 +256,5 @@ export class RegisterSiteDialog {
     this.repository = null;
     this.branch = null;
     this.branchMode.set('fixed');
-    this.verifyFailed.set(false);
   }
 }

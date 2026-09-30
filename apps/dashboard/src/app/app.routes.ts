@@ -9,6 +9,10 @@ export const routes: Routes = [
     component: AuthLayout,
     canActivate: [requireNoSession],
     children: [
+      // Without this, `/` matched this layout and found no child to put in
+      // its outlet — the shell rendered around an empty card, which is what
+      // a first-time visitor saw at the root of the dashboard.
+      { path: '', redirectTo: 'sign-in', pathMatch: 'full' },
       { path: 'sign-in', loadComponent: () => import('./features/auth/sign-in/sign-in').then((m) => m.SignIn) },
       { path: 'sign-in/check-email', loadComponent: () => import('./features/auth/check-email/check-email').then((m) => m.CheckEmail) },
     ],
@@ -23,6 +27,12 @@ export const routes: Routes = [
     path: '',
     component: AuthLayout,
     children: [
+      // Where the emailed sign-in link lands. On the *unguarded* layout for
+      // the same reason as invitations: bouncing a signed-in person off it
+      // would consume nothing and explain nothing, and somebody signing in
+      // on a second device is exactly who is holding this link.
+      { path: 'sign-in/verify', loadComponent: () => import('./features/auth/verify/verify').then((m) => m.Verify) },
+
       // `invitations/`, matching the path the API puts in the email. The
       // old `invite/` is kept as a redirect because invitations live 14
       // days, so links in the old shape may already be in an inbox.
