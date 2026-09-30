@@ -16,7 +16,10 @@ const SHAPES = {
   inspect: [
     ["circle", { cx: 12, cy: 12, r: 7 }],
     ["path", { d: "M12 1v3M12 20v3M1 12h3M20 12h3" }],
-    ["circle", { cx: 12, cy: 12, r: 1.6, fill: "currentColor", stroke: "none" }],
+    [
+      "circle",
+      { cx: 12, cy: 12, r: 1.6, fill: "currentColor", stroke: "none" },
+    ],
   ],
 
   // Pencil — edit text.
@@ -82,16 +85,23 @@ const SHAPES = {
 
   // Crossing rules — alignment guides.
   guides: [
-    ["path", { d: "M3 9h18M3 15h18M9 3v18M15 3v18", "stroke-dasharray": "2 2.5" }],
+    [
+      "path",
+      { d: "M3 9h18M3 15h18M9 3v18M15 3v18", "stroke-dasharray": "2 2.5" },
+    ],
   ],
 
   // A speech bubble — leaving a comment rather than making a change.
   comment: [
-    ["path", { d: "M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" }],
+    [
+      "path",
+      {
+        d: "M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z",
+      },
+    ],
   ],
 
   close: [["path", { d: "M18 6L6 18M6 6l12 12" }]],
-  // The classic accessibility figure: head, arms out, legs.
   a11y: [
     ["circle", { cx: "12", cy: "5", r: "2" }],
     ["path", { d: "M4 9h16M12 9v6M12 15l-4 5M12 15l4 5" }],
