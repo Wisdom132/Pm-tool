@@ -1,4 +1,4 @@
-# @quartalyst/inline-edit-annotation
+# @usecaliper/annotation
 
 Build-time plugins that stamp source locations onto the DOM, so rendered text
 can be traced back to the file it came from.
@@ -7,7 +7,7 @@ Part of the [Inline Edit Tool](../README.md), but useful on its own to anyone
 who wants `data-edit-file` / `data-edit-line` on their markup.
 
 ```bash
-npm install --save-dev @quartalyst/inline-edit-annotation
+npm install --save-dev @usecaliper/annotation
 ```
 
 ## What it emits
@@ -55,13 +55,13 @@ Annotations expose your source layout. **Never ship them to production.**
 ### React / Next.js
 
 ```json
-{ "plugins": ["@quartalyst/inline-edit-annotation/react"] }
+{ "plugins": ["@usecaliper/annotation/react"] }
 ```
 
 ### Vue / Nuxt
 
 ```js
-import inlineEdit from '@quartalyst/inline-edit-annotation/vue';
+import inlineEdit from '@usecaliper/annotation/vue';
 
 export default { plugins: [vue(), inlineEdit()] };
 ```
@@ -71,7 +71,7 @@ export default { plugins: [vue(), inlineEdit()] };
 ```ts
 // nuxt.config.ts
 export default defineNuxtConfig({
-  modules: ['@quartalyst/inline-edit-annotation/nuxt'],
+  modules: ['@usecaliper/annotation/nuxt'],
 });
 ```
 
@@ -86,7 +86,7 @@ To run the editor on the page as well, without installing the extension
 
 ```ts
 modules: [
-  ['@quartalyst/inline-edit-annotation/nuxt', {
+  ['@usecaliper/annotation/nuxt', {
     preview: {
       extensionDist: '/path/to/inline-edit-tool/extension/dist',
       autoOpen: false,   // summon with Cmd/Ctrl+Shift+E instead
@@ -103,7 +103,7 @@ toggles it either way.
 ### Svelte / SvelteKit
 
 ```js
-import inlineEdit from '@quartalyst/inline-edit-annotation/svelte';
+import inlineEdit from '@usecaliper/annotation/svelte';
 
 export default { plugins: [inlineEdit(), sveltekit()] };
 ```
@@ -124,7 +124,7 @@ Requires `@angular-builders/custom-webpack`. In `angular.json`:
 ```json
 {
   "customWebpackConfig": {
-    "path": "./node_modules/@quartalyst/inline-edit-annotation/angular/webpack.config.js",
+    "path": "./node_modules/@usecaliper/annotation/angular/webpack.config.js",
     "mergeStrategies": { "module.rules": "prepend" }
   }
 }

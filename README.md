@@ -1,4 +1,6 @@
-# Inline Edit Tool
+# Caliper
+
+[![npm](https://img.shields.io/npm/v/@usecaliper/annotation)](https://www.npmjs.com/package/@usecaliper/annotation)
 
 Click text on a preview deployment, rewrite it in place, and open a pull
 request against the source file it came from.
@@ -6,6 +8,12 @@ request against the source file it came from.
 Built for the people who notice the typo but don't open the repo — writers,
 PMs, designers reviewing a staging build. They edit what they see; the tool
 works out which file to change and opens a PR for a developer to merge.
+
+```bash
+npm install --save-dev @usecaliper/annotation
+```
+
+Full setup in **[INSTALL.md](INSTALL.md)**.
 
 ```
                         ┌─── build time ───┐
@@ -228,20 +236,26 @@ site id.
 
 ### 3. The annotation plugin
 
-This is what makes edits land in the right file. Pick your framework below.
+This is what makes edits land in the right file. Pick your framework below,
+or see **[INSTALL.md](INSTALL.md)** for the whole thing in one place.
 
-**Preview deployments must build with `INLINE_EDIT=1`.** Annotations expose
-your source layout, so they must never ship to production — CI enforces this,
-see `scripts/check-no-annotations.mjs`.
+**On Vercel, Netlify, Cloudflare Pages and Render you need to set nothing** —
+the plugin reads the host's own environment and annotates previews while
+leaving production alone. Anywhere else it cannot tell what a build is for,
+so it stays off and you set `INLINE_EDIT=1` on the previews you want
+editable. `INLINE_EDIT=0` opts a branch out even on a preview.
+
+Annotations name every source file on the page, so they must never ship to
+production — CI enforces this, see `scripts/check-no-annotations.mjs`.
 
 ---
 
 ## Annotation plugins
 
-All four stamp the same attributes and are inert unless `INLINE_EDIT` is
-truthy (or you are running a dev server). A parity test runs equivalent
-markup through every one of them, because they had silently diverged once
-and nothing caught it.
+All four stamp the same attributes, and all four decide for themselves
+whether to run — see [when annotation turns itself on](INSTALL.md#when-annotation-turns-itself-on).
+A parity test runs equivalent markup through every one of them, because they
+had silently diverged once and nothing caught it.
 
 <details>
 <summary><b>React / Next.js</b></summary>

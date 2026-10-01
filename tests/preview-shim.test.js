@@ -22,7 +22,7 @@ const EXTENSION = new URL('../inline-edit-tool/extension/src', import.meta.url).
  * only the first is exactly how the second stayed on the old protocol.
  */
 const SHIMS = {
-  'examples/inline-edit-preview.cjs': new URL('../examples/inline-edit-preview.cjs', import.meta.url).pathname,
+  'annotation/preview/index.cjs': new URL('../annotation/preview/index.cjs', import.meta.url).pathname,
   'extension/preview-shim.js': new URL('../inline-edit-tool/extension/preview-shim.js', import.meta.url).pathname,
 };
 

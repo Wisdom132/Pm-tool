@@ -1,8 +1,18 @@
 {
-  "name": "@quartalyst/inline-edit-annotation",
-  "version": "1.0.0",
-  "description": "Build-time annotation plugins for the Inline Edit Tool — stamp source locations onto the DOM so rendered text can be traced back to the file it came from (React, Vue, Svelte, Angular)",
+  "name": "@usecaliper/annotation",
+  "version": "1.0.2",
+  "description": "Build-time annotation plugins for the Inline Edit Tool \u2014 stamp source locations onto the DOM so rendered text can be traced back to the file it came from (React, Vue, Svelte, Angular)",
   "license": "MIT",
+  "author": "Wisdom Ekpot <wisdomekpot@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wisdom132/Pm-tool.git",
+    "directory": "annotation"
+  },
+  "homepage": "https://github.com/Wisdom132/Pm-tool#readme",
+  "bugs": {
+    "url": "https://github.com/Wisdom132/Pm-tool/issues"
+  },
   "keywords": [
     "inline-edit",
     "babel-plugin",
@@ -21,7 +31,11 @@
     "./angular": "./angular/index.js",
     "./angular/webpack-config": "./angular/webpack.config.js",
     "./angular/loader": "./angular/template-loader.js",
-    "./build-info": "./lib/build-info.js"
+    "./build-info": "./lib/build-info.js",
+    "./preview": "./preview/index.cjs"
+  },
+  "scripts": {
+    "prepublishOnly": "npm --prefix .. run test"
   },
   "files": [
     "react",
@@ -29,6 +43,7 @@
     "svelte",
     "nuxt",
     "angular",
+    "preview",
     "lib",
     "README.md"
   ],
@@ -38,9 +53,15 @@
     "@vue/compiler-dom": ">=3"
   },
   "peerDependenciesMeta": {
-    "@babel/core": { "optional": true },
-    "@vue/compiler-sfc": { "optional": true },
-    "@vue/compiler-dom": { "optional": true }
+    "@babel/core": {
+      "optional": true
+    },
+    "@vue/compiler-sfc": {
+      "optional": true
+    },
+    "@vue/compiler-dom": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=18"

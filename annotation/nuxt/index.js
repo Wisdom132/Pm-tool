@@ -14,10 +14,10 @@ const { buildInfoAttrs, getBuildInfo, isAnnotationEnabled } = require('../lib/bu
  * telling people to add the Vite plugin themselves.
  *
  * Wire into nuxt.config.ts:
- *   modules: ['@quartalyst/inline-edit-annotation/nuxt']
+ *   modules: ['@usecaliper/annotation/nuxt']
  *
  * With the in-page editor as well (development only):
- *   modules: [['@quartalyst/inline-edit-annotation/nuxt', {
+ *   modules: [['@usecaliper/annotation/nuxt', {
  *     preview: { extensionDist: '/path/to/inline-edit-tool/extension/dist' },
  *   }]]
  *
@@ -52,10 +52,17 @@ function inlineEditNuxtModule(options = {}, nuxt) {
   // Dev only: a production build must never serve it.
   if (!nuxt.options.dev) return;
 
-  const previewPlugin = require(
-    path.resolve(__dirname, '../../examples/inline-edit-preview.cjs')
-  );
-  nuxt.options.vite.plugins.push(previewPlugin(options.preview));
+  // Inside the package, not up in the repository's examples/ directory.
+  // It used to be the latter, which resolved correctly from a `file:` link
+  // and resolved to `node_modules/@usecaliper/examples` once installed from
+  // npm — so the dev server died on boot for every real consumer. Nothing
+  // the package requires at runtime may live outside its own `files`.
+  const previewPlugin = require(path.resolve(__dirname, '../preview/index.cjs'));
+  // `preview: true` is the common case now that the editor resolves itself
+  // from `@usecaliper/editor`; the object form is for overriding where it
+  // reads the build from.
+  const previewOptions = options.preview === true ? {} : options.preview;
+  nuxt.options.vite.plugins.push(previewPlugin(previewOptions));
 
   head.link = [...(head.link || []), { rel: 'stylesheet', href: '/__iet/page.css' }];
   head.script = [
@@ -68,7 +75,7 @@ function inlineEditNuxtModule(options = {}, nuxt) {
 
 // Nuxt reads this to name the module in its startup output.
 inlineEditNuxtModule.meta = {
-  name: '@quartalyst/inline-edit-annotation',
+  name: '@usecaliper/annotation',
   configKey: 'inlineEdit',
 };
 

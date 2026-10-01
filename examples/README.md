@@ -97,8 +97,8 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const REPO = '/ABSOLUTE/PATH/TO/inline-edit-tool-repo';
 
-const inlineEdit = require('@quartalyst/inline-edit-annotation/vue');
-const inlineEditPreview = require(`${REPO}/examples/inline-edit-preview.cjs`);
+const inlineEdit = require('@usecaliper/annotation/vue');
+const inlineEditPreview = require(`${REPO}/annotation/preview/index.cjs`);
 
 export default defineConfig({
   plugins: [

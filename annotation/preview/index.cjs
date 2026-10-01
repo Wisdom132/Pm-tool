@@ -18,8 +18,15 @@ const path = require('path');
  * Dev only. A production build of an example ships no editor.
  */
 
-/** Where the built extension lives when this runs inside its own repository. */
-const BUNDLED_DIST = path.resolve(__dirname, '../inline-edit-tool/extension/dist');
+/**
+ * Where the built extension lives when this runs inside its own repository.
+ *
+ * Only meaningful in a checkout. Installed from npm this path does not
+ * exist, and the caller is expected to pass `extensionDist` — the asset
+ * handler answers with a 503 explaining exactly that, rather than failing
+ * at import time.
+ */
+const BUNDLED_DIST = path.resolve(__dirname, '../../inline-edit-tool/extension/dist');
 
 /** Served files, by request path. */
 function assetsFrom(dist) {
@@ -132,14 +139,42 @@ function locateText(root, text) {
   };
 }
 
+/**
+ * Where to read the editor's files from, in order of how specific the
+ * answer is.
+ *
+ * 1. **An explicit path**, for somebody hacking on the extension itself and
+ *    wanting their rebuild picked up — the only case `extensionDist` was
+ *    ever really for.
+ * 2. **`@usecaliper/editor`**, the published package. This is the path that
+ *    makes "try it without installing the extension" true for people who
+ *    are not us; before it existed the option needed an absolute path to a
+ *    directory only one machine had.
+ * 3. **The repository's own build**, so the examples in this repo keep
+ *    working with nothing installed.
+ */
+function resolveEditorDist(explicit) {
+  if (explicit) return explicit;
+
+  try {
+    const editor = require('@usecaliper/editor');
+    if (editor.isBuilt()) return editor.distDir;
+  } catch {
+    // Not installed. Fall through — the repository build may still be
+    // there, and if it is not, the asset handler explains what to do.
+  }
+
+  return BUNDLED_DIST;
+}
+
 module.exports = function inlineEditPreview({
   root = process.cwd(),
-  extensionDist = BUNDLED_DIST,
+  extensionDist,
   repo = 'local/project',
   branch = 'local',
   autoOpen = true,
 } = {}) {
-  const ASSETS = assetsFrom(extensionDist);
+  const ASSETS = assetsFrom(resolveEditorDist(extensionDist));
 
   return {
     name: 'inline-edit-preview',
@@ -156,9 +191,13 @@ module.exports = function inlineEditPreview({
             res.setHeader('Content-Type', 'text/plain');
             res.end(
               `${asset.file} does not exist.\n\n` +
-                `Build the extension:  npm run build:ext\n` +
-                `From another project, point the plugin at it:\n` +
-                `  inlineEditPreview({ extensionDist: '/path/to/inline-edit-tool/extension/dist' })\n`
+                `The editor is a separate package, so that projects using only\n` +
+                `the browser extension do not download it:\n\n` +
+                `  npm install --save-dev @usecaliper/editor\n\n` +
+                `Working inside the Caliper repository instead:\n` +
+                `  npm run build:ext\n\n` +
+                `Or point at a build of your own:\n` +
+                `  inlineEditPreview({ extensionDist: '/path/to/extension/dist' })\n`
             );
             return;
           }

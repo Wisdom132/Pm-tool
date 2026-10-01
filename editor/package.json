@@ -1,0 +1,41 @@
+{
+  "name": "@usecaliper/editor",
+  "version": "1.0.0",
+  "description": "The Caliper editor, served into a dev server so the tool can be used without installing the browser extension",
+  "license": "MIT",
+  "author": "Wisdom Ekpot <wisdomekpot@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wisdom132/Pm-tool.git",
+    "directory": "editor"
+  },
+  "homepage": "https://github.com/Wisdom132/Pm-tool#readme",
+  "bugs": {
+    "url": "https://github.com/Wisdom132/Pm-tool/issues"
+  },
+  "keywords": [
+    "inline-edit",
+    "caliper",
+    "preview",
+    "dev-server"
+  ],
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.js",
+    "prepack": "node build.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

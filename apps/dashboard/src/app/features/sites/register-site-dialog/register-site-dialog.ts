@@ -158,32 +158,32 @@ export class RegisterSiteDialog {
       case 'nuxt':
         return {
           file: 'nuxt.config.ts',
-          code: `export default defineNuxtConfig({\n  modules: ['@quartalyst/inline-edit-annotation/nuxt'],\n});`,
+          code: `export default defineNuxtConfig({\n  modules: ['@usecaliper/annotation/nuxt'],\n});`,
         };
       case 'vue':
         return {
           file: 'vite.config.js',
-          code: `import inlineEdit from '@quartalyst/inline-edit-annotation/vue';\n\nexport default defineConfig({\n  // before vue(): it needs the raw .vue file\n  plugins: [inlineEdit(), vue()],\n});`,
+          code: `import inlineEdit from '@usecaliper/annotation/vue';\n\nexport default defineConfig({\n  // before vue(): it needs the raw .vue file\n  plugins: [inlineEdit(), vue()],\n});`,
         };
       case 'react':
         return {
           file: 'vite.config.js',
-          code: `import react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [\n    react({\n      babel: { plugins: ['@quartalyst/inline-edit-annotation/react'] },\n    }),\n  ],\n});`,
+          code: `import react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [\n    react({\n      babel: { plugins: ['@usecaliper/annotation/react'] },\n    }),\n  ],\n});`,
         };
       case 'next':
         return {
           file: '.babelrc',
-          code: `{\n  "presets": ["next/babel"],\n  "plugins": ["@quartalyst/inline-edit-annotation/react"]\n}`,
+          code: `{\n  "presets": ["next/babel"],\n  "plugins": ["@usecaliper/annotation/react"]\n}`,
         };
       case 'svelte':
         return {
           file: 'vite.config.js',
-          code: `import inlineEdit from '@quartalyst/inline-edit-annotation/svelte';\n\nexport default defineConfig({\n  // before sveltekit(): the compiler turns components into JS\n  plugins: [inlineEdit(), sveltekit()],\n});`,
+          code: `import inlineEdit from '@usecaliper/annotation/svelte';\n\nexport default defineConfig({\n  // before sveltekit(): the compiler turns components into JS\n  plugins: [inlineEdit(), sveltekit()],\n});`,
         };
       case 'angular':
         return {
           file: 'angular.json',
-          code: `"customWebpackConfig": {\n  "path": "./node_modules/@quartalyst/inline-edit-annotation/angular/webpack.config.js",\n  "mergeStrategies": { "module.rules": "prepend" }\n}`,
+          code: `"customWebpackConfig": {\n  "path": "./node_modules/@usecaliper/annotation/angular/webpack.config.js",\n  "mergeStrategies": { "module.rules": "prepend" }\n}`,
         };
     }
   });

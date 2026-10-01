@@ -1,5 +1,5 @@
 {
-  "name": "quartalyst-inline-edit-tool",
+  "name": "caliper-inline-edit-tool",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "dev:api": "npm --workspace @inline-edit/api run dev",
     "dev:dashboard": "npm --prefix apps/dashboard run start",
     "build:ext": "cd inline-edit-tool/extension && node build.js",
+    "build:editor": "node editor/build.js",
     "build:api": "npm --workspace @inline-edit/api run build",
     "build:widget": "node widget/build.js",
     "dev:widget": "node widget/build.js --watch",

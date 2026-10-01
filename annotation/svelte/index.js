@@ -12,11 +12,11 @@ const { annotateSource } = require('./annotator.js');
  * INLINE_EDIT=1 explicitly.
  *
  * Wire into vite.config.js:
- *   import inlineEditPlugin from '@quartalyst/inline-edit-annotation/svelte';
+ *   import inlineEditPlugin from '@usecaliper/annotation/svelte';
  *   plugins: [inlineEditPlugin(), svelte()]
  *
  * Or svelte.config.js / SvelteKit:
- *   import inlineEditPlugin from '@quartalyst/inline-edit-annotation/svelte';
+ *   import inlineEditPlugin from '@usecaliper/annotation/svelte';
  *   // vite.config.js
  *   plugins: [inlineEditPlugin(), sveltekit()]
  *

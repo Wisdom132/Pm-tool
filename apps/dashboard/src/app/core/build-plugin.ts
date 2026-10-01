@@ -19,7 +19,7 @@ export const FRAMEWORKS: { label: string; value: Framework }[] = [
   { label: 'Angular', value: 'angular' },
 ];
 
-export const PACKAGE = '@quartalyst/inline-edit-annotation';
+export const PACKAGE = '@usecaliper/annotation';
 
 export interface PluginSnippet {
   /** The file the change goes in, named so it can be found. */
