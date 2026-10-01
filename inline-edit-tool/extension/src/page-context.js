@@ -46,6 +46,9 @@ export function readBuildAttrs(dataset = {}) {
     branch: clean(dataset.editBranch),
     commit: clean(dataset.editCommit),
     repo: clean(dataset.editRepo),
+    // Which plugin stamped this page. Null on anything built before the
+    // attribute existed, which is a supported state — see CONTRACT.md.
+    pluginVersion: clean(dataset.editVersion),
   };
 }
 

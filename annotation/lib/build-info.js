@@ -217,12 +217,49 @@ function isAnnotationEnabled(devSignal, env = process.env) {
   return Boolean(devSignal);
 }
 
-/** The data-edit-* attributes describing this build, as an object. */
+/**
+ * Which version of this package stamped the page.
+ *
+ * Read from our own package.json rather than hard-coded, so it cannot drift
+ * from what was actually published.
+ */
+function pluginVersion() {
+  if (_version !== null) return _version;
+  try {
+    _version = require('../package.json').version || null;
+  } catch {
+    // Bundled somewhere that cannot resolve the manifest. A missing version
+    // is readable as "older than any version that reports one", which is
+    // the right default.
+    _version = null;
+  }
+  return _version;
+}
+let _version = null;
+
+/**
+ * The data-edit-* attributes describing this build, as an object.
+ *
+ * `data-edit-version` is here for diagnostics, never for branching. The
+ * extension auto-updates through the Chrome Web Store; this package only
+ * updates when somebody runs `npm update` *and* redeploys. So the extension
+ * is almost always the newer of the two, and it has to keep working against
+ * every attribute set this package has ever emitted.
+ *
+ * What the version buys is the ability to say so. Without it, an edit that
+ * fails because the plugin predates the feature looks identical to a page
+ * that was never annotated — and nobody can tell that `npm update` is the
+ * fix.
+ */
 function buildInfoAttrs(info = getBuildInfo()) {
   const attrs = {};
   if (info.branch) attrs['data-edit-branch'] = info.branch;
   if (info.commit) attrs['data-edit-commit'] = info.commit;
   if (info.repo) attrs['data-edit-repo'] = info.repo;
+
+  const version = pluginVersion();
+  if (version) attrs['data-edit-version'] = version;
+
   return attrs;
 }
 
@@ -242,12 +279,16 @@ function stampHtmlTag(html, info = getBuildInfo()) {
   const attrs = buildInfoAttrString(info);
   if (!attrs) return html;
   return html.replace(/(<html\b[^>]*?)(\s*\/?>)/i, (m, open, close) =>
-    open.includes('data-edit-branch') ? m : `${open}${attrs}${close}`
+    // Checked against any of our attributes, not just the branch: a local
+    // build has no branch variable, so keying on it alone made this
+    // non-idempotent exactly where it is run most often.
+    /data-edit-(branch|commit|repo|version)=/.test(open) ? m : `${open}${attrs}${close}`
   );
 }
 
 module.exports = {
   resolveBuildInfo,
+  pluginVersion,
   getBuildInfo,
   isAnnotationEnabled,
   hostDeployKind,

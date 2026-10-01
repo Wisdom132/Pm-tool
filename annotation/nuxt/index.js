@@ -2,7 +2,7 @@
 
 const path = require('path');
 const vuePlugin = require('../vue/index.js');
-const { getBuildInfo, isAnnotationEnabled } = require('../lib/build-info.js');
+const { buildInfoAttrs, getBuildInfo, isAnnotationEnabled } = require('../lib/build-info.js');
 
 /**
  * Nuxt module.
@@ -36,15 +36,15 @@ function inlineEditNuxtModule(options = {}, nuxt) {
 
   const head = (nuxt.options.app.head = nuxt.options.app.head || {});
 
-  // Which build the page came from. The Vite plugin puts these on <html> from
-  // transformIndexHtml; here they have to be declared.
-  const info = getBuildInfo();
-  head.htmlAttrs = {
-    ...head.htmlAttrs,
-    ...(info.repo ? { 'data-edit-repo': info.repo } : {}),
-    ...(info.branch ? { 'data-edit-branch': info.branch } : {}),
-    ...(info.commit ? { 'data-edit-commit': info.commit } : {}),
-  };
+  // Which build the page came from. The Vite plugin puts these on <html>
+  // from transformIndexHtml, which Nitro never runs — here they have to be
+  // declared instead.
+  //
+  // Through `buildInfoAttrs`, not a second copy of the list. This module
+  // used to spell the attributes out itself, and when `data-edit-version`
+  // was added to the shared helper every other plugin picked it up and
+  // Nuxt silently did not. A real preview build is what caught it.
+  head.htmlAttrs = { ...head.htmlAttrs, ...buildInfoAttrs(getBuildInfo()) };
 
   if (!options.preview) return;
 

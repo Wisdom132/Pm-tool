@@ -11,6 +11,7 @@
 // ============================================================
 
 import { annotationFor } from "../element-selector.js";
+import { outdatedHint } from "../plugin-version.js";
 
 const P = "__iet";
 
@@ -148,6 +149,20 @@ export function createInspectorCard() {
         list.append(dt, dd);
       }
       card.appendChild(list);
+
+      // Translated copy is the one feature whose absence is invisible: the
+      // element looks ordinary, the edit just does not reach the locale
+      // file. Say which plugin version this page has and what it needs.
+      const version = document.documentElement.dataset.editVersion || null;
+      if (annotation.sourceFile && !el.dataset.editI18nKey) {
+        const hint = outdatedHint(version, "i18n");
+        if (hint) {
+          const stale = document.createElement("p");
+          stale.className = `${P}-inspector-note`;
+          stale.textContent = hint;
+          card.appendChild(stale);
+        }
+      }
 
       if (!annotation.sourceFile) {
         const note = document.createElement("p");

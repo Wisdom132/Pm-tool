@@ -4,6 +4,7 @@ import {
   isAnnotationEnabled,
   hostDeployKind,
   buildInfoAttrs,
+  pluginVersion,
   buildInfoAttrString,
   stampHtmlTag,
   parseRepoUrl,
@@ -205,27 +206,38 @@ describe('isAnnotationEnabled', () => {
 });
 
 describe('buildInfoAttrs', () => {
-  it('emits all three attributes', () => {
+  it('emits the build attributes, plus the plugin version', () => {
     expect(buildInfoAttrs({ branch: 'main', commit: 'abc', repo: 'acme/site' })).toEqual({
       'data-edit-branch': 'main',
       'data-edit-commit': 'abc',
       'data-edit-repo': 'acme/site',
+      'data-edit-version': pluginVersion(),
     });
   });
 
-  it('omits missing fields', () => {
+  it('omits missing build fields but never the version', () => {
     expect(buildInfoAttrs({ branch: 'main', commit: null, repo: null })).toEqual({
       'data-edit-branch': 'main',
+      'data-edit-version': pluginVersion(),
     });
   });
 
-  it('renders nothing when everything is unknown', () => {
-    expect(buildInfoAttrString({ branch: null, commit: null, repo: null })).toBe('');
+  it('still reports the version when the build is entirely unknown', () => {
+    // This used to render nothing at all. A local build has no CI variables,
+    // which is exactly the case where somebody is most likely to be asking
+    // "is the plugin even running?" — and the version answers it. The page
+    // is only stamped when annotation is enabled, so this adds nothing to a
+    // production build.
+    const s = buildInfoAttrString({ branch: null, commit: null, repo: null });
+    expect(s).toContain('data-edit-version=');
+    expect(s).not.toContain('data-edit-branch=');
   });
 
   it('escapes quotes in attribute values', () => {
+    // A branch name is attacker-influenced on a fork, and this string is
+    // written straight into an HTML attribute.
     const s = buildInfoAttrString({ branch: 'a"b', commit: null, repo: null });
-    expect(s).toBe(' data-edit-branch="a&quot;b"');
+    expect(s).toContain('data-edit-branch="a&quot;b"');
   });
 });
 
@@ -257,9 +269,17 @@ describe('stampHtmlTag', () => {
     expect(out).toContain('</html>');
   });
 
-  it('returns the document untouched when nothing is known', () => {
-    const html = '<html lang="en">x</html>';
-    expect(stampHtmlTag(html, { branch: null, commit: null, repo: null })).toBe(html);
+  it('still stamps the version when nothing about the build is known', () => {
+    // Previously this left the document untouched. A local build has no CI
+    // variables, and that is precisely when somebody wants to know whether
+    // the plugin ran at all.
+    const out = stampHtmlTag('<html lang="en">x</html>', {
+      branch: null,
+      commit: null,
+      repo: null,
+    });
+    expect(out).toContain('data-edit-version=');
+    expect(out).toContain('lang="en"');
   });
 
   it('handles an <html> tag with no attributes', () => {

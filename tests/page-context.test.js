@@ -43,12 +43,31 @@ describe('readBuildAttrs', () => {
         editBranch: 'feature/pricing',
         editCommit: 'abc123',
         editRepo: 'acme/site',
+        editVersion: '1.2.0',
       })
-    ).toEqual({ branch: 'feature/pricing', commit: 'abc123', repo: 'acme/site' });
+    ).toEqual({
+      branch: 'feature/pricing',
+      commit: 'abc123',
+      repo: 'acme/site',
+      pluginVersion: '1.2.0',
+    });
+  });
+
+  it('reports a null version for a page built before the attribute existed', () => {
+    // A supported state, not an error — CONTRACT.md rule 3. The extension
+    // reads it as "assume everything works" rather than warning somebody
+    // about a plugin that is fine.
+    const attrs = readBuildAttrs({ editBranch: 'main', editCommit: 'abc' });
+    expect(attrs.pluginVersion).toBeNull();
   });
 
   it('returns nulls for an unannotated page', () => {
-    expect(readBuildAttrs({})).toEqual({ branch: null, commit: null, repo: null });
+    expect(readBuildAttrs({})).toEqual({
+      branch: null,
+      commit: null,
+      repo: null,
+      pluginVersion: null,
+    });
   });
 
   it('treats blank attributes as absent', () => {

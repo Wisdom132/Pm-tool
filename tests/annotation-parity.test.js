@@ -268,3 +268,144 @@ describe.each(PLUGINS)('$name — translated copy', ({ name, annotate }) => {
     expect(editable(annotate(COMPUTED_MARKUP[name])).length, `${name}`).toBe(0);
   });
 });
+
+// ============================================================
+//  The wire contract
+//
+//  `annotation/CONTRACT.md` calls these attribute names a
+//  public format: once a page carrying them is deployed, it is
+//  out of our hands until that site redeploys. A rename
+//  therefore breaks every live site, and the extension — which
+//  auto-updates and is almost always the newer half — can do
+//  nothing about it.
+//
+//  Prose cannot enforce that. These tests can.
+// ============================================================
+
+/** Every attribute the contract defines, and nothing else. */
+const CONTRACT_ELEMENT_ATTRS = [
+  'data-edit-file',
+  'data-edit-line',
+  'data-edit-col',
+  'data-editable',
+  'data-edit-framework',
+  'data-edit-i18n-key',
+];
+
+const CONTRACT_HTML_ATTRS = [
+  'data-edit-repo',
+  'data-edit-branch',
+  'data-edit-commit',
+  'data-edit-version',
+];
+
+describe('the wire contract', () => {
+  const MARKUP = {
+    react: "<h1>{t('hero.title')}</h1>",
+    vue: "<h1>{{ $t('hero.title') }}</h1>",
+    svelte: "<h1>{$_('hero.title')}</h1>",
+    angular: "<h1>{{ 'hero.title' | translate }}</h1>",
+  };
+
+  it.each(PLUGINS)('$name emits only contract attributes', ({ name, annotate }) => {
+    const emitted = new Set(
+      [...annotate(MARKUP[name]).matchAll(/\b(data-edit[a-z0-9-]*|data-editable)\s*=/g)].map(
+        (m) => m[1]
+      )
+    );
+
+    for (const attr of emitted) {
+      // A name not in the contract is either a typo or an undocumented
+      // addition. Both are caught here rather than in a customer's build.
+      expect(
+        [...CONTRACT_ELEMENT_ATTRS, ...CONTRACT_HTML_ATTRS],
+        `${name} emits ${attr}, which CONTRACT.md does not define`
+      ).toContain(attr);
+    }
+  });
+
+  it.each(PLUGINS)('$name spells the core three exactly', ({ name, annotate }) => {
+    // The three the codemod resolves an edit with. A rename here is the
+    // single most expensive mistake available in this codebase.
+    const out = annotate(MARKUP[name]);
+    for (const attr of ['data-edit-file', 'data-edit-line', 'data-edit-col']) {
+      expect(out, `${name}: ${attr}`).toContain(attr);
+    }
+  });
+
+  it('documents every attribute the plugins actually emit', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const contract = await readFile(
+      new URL('../annotation/CONTRACT.md', import.meta.url),
+      'utf8'
+    );
+
+    const emitted = new Set();
+    for (const { name, annotate } of PLUGINS) {
+      for (const m of annotate(MARKUP[name]).matchAll(/\b(data-edit[a-z0-9-]*|data-editable)\s*=/g)) {
+        emitted.add(m[1]);
+      }
+    }
+
+    for (const attr of emitted) {
+      expect(contract, `CONTRACT.md never mentions ${attr}`).toContain(attr);
+    }
+  });
+
+  it('stamps a version on the build attributes', async () => {
+    const { createRequire } = await import('node:module');
+    const req = createRequire(import.meta.url);
+    const { buildInfoAttrs, pluginVersion } = req('../annotation/lib/build-info.js');
+
+    // Without this the extension cannot tell "plugin too old for this
+    // feature" from "page was never annotated", and the person seeing the
+    // failure has no way to learn that `npm update` is the fix.
+    expect(pluginVersion()).toMatch(/^\d+\.\d+\.\d+/);
+    expect(buildInfoAttrs({})['data-edit-version']).toBe(pluginVersion());
+  });
+
+  it('stamps the html tag once, even with no CI variables', async () => {
+    const { createRequire } = await import('node:module');
+    const req = createRequire(import.meta.url);
+    const { stampHtmlTag } = req('../annotation/lib/build-info.js');
+
+    // A local build has no branch or commit, only a version. Keying
+    // idempotency on the branch alone made this re-stamp on every pass
+    // exactly where it runs most often.
+    const once = stampHtmlTag('<html lang="en"><body></body></html>', {});
+    const twice = stampHtmlTag(once, {});
+
+    expect(once).toContain('data-edit-version');
+    expect(twice).toBe(once);
+    expect(twice.match(/data-edit-version/g)).toHaveLength(1);
+  });
+});
+
+describe('build attributes come from one place', () => {
+  it('no plugin spells the attribute names out for itself', async () => {
+    // The Nuxt module used to build this list by hand. When
+    // `data-edit-version` was added to the shared helper, every other
+    // plugin picked it up and Nuxt silently did not — found by inspecting a
+    // real preview build, not by any test.
+    //
+    // One literal list, in build-info.js. Anywhere else is drift waiting to
+    // happen.
+    const { readFile } = await import('node:fs/promises');
+    const files = [
+      '../annotation/nuxt/index.js',
+      '../annotation/vue/index.js',
+      '../annotation/react/index.js',
+      '../annotation/svelte/index.js',
+      '../annotation/angular/template-loader.js',
+    ];
+
+    for (const file of files) {
+      const src = await readFile(new URL(file, import.meta.url), 'utf8');
+      const stripped = src.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '');
+
+      for (const attr of ['data-edit-repo', 'data-edit-branch', 'data-edit-commit', 'data-edit-version']) {
+        expect(stripped, `${file} names ${attr} itself instead of using buildInfoAttrs`).not.toContain(attr);
+      }
+    }
+  });
+});
