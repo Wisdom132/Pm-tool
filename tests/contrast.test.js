@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  apcaContrast,
+  apcaVerdict,
   compositeOver,
   contrastRatio,
   isLargeText,
@@ -131,5 +133,75 @@ describe('wcagVerdict', () => {
     const verdict = wcagVerdict(4.4949);
     expect(verdict.ratio).toBe(4.49);
     expect(verdict.aa).toBe(false);
+  });
+});
+
+// ============================================================
+//  APCA
+//
+//  WCAG 2's ratio is wrong in the middle of the range. APCA —
+//  the model behind WCAG 3 — is polarity-aware, so dark-on-light
+//  and light-on-dark at the same WCAG ratio get different, and
+//  more honest, answers.
+//
+//  Checked against the published W3 reference values, because a
+//  number that looks authoritative and is wrong is worse than
+//  no number.
+// ============================================================
+describe('apcaContrast', () => {
+  const c = (r, g, b) => ({ r, g, b, a: 1 });
+
+  it('matches the W3 reference values', () => {
+    expect(apcaContrast(c(0, 0, 0), c(255, 255, 255))).toBeCloseTo(106.04, 0);
+    expect(apcaContrast(c(255, 255, 255), c(0, 0, 0))).toBeCloseTo(-107.88, 0);
+    expect(apcaContrast(c(136, 136, 136), c(255, 255, 255))).toBeCloseTo(63.1, 0);
+  });
+
+  it('is polarity-aware, which is the whole point', () => {
+    // WCAG gives these two the identical ratio. APCA does not, because the
+    // eye does not read them the same.
+    const darkOnLight = apcaContrast(c(0, 0, 0), c(255, 255, 255));
+    const lightOnDark = apcaContrast(c(255, 255, 255), c(0, 0, 0));
+
+    expect(darkOnLight).toBeGreaterThan(0);
+    expect(lightOnDark).toBeLessThan(0);
+    expect(Math.abs(darkOnLight)).not.toBeCloseTo(Math.abs(lightOnDark), 1);
+  });
+
+  it('reports zero for no contrast at all', () => {
+    expect(apcaContrast(c(255, 255, 255), c(255, 255, 255))).toBe(0);
+    expect(apcaContrast(c(128, 128, 128), c(128, 128, 128))).toBe(0);
+  });
+
+  it('reports zero inside the deadzone rather than a tiny number', () => {
+    // Below the threshold the model is noise. Reporting "1.4" there would
+    // imply a precision that is not present.
+    expect(apcaContrast(c(128, 128, 128), c(130, 130, 130))).toBe(0);
+  });
+
+  it('soft-clamps near black instead of cliff-edging', () => {
+    // A hard floor creates a discontinuity exactly where dark themes live.
+    const a = Math.abs(apcaContrast(c(255, 255, 255), c(0, 0, 0)));
+    const b = Math.abs(apcaContrast(c(255, 255, 255), c(8, 8, 8)));
+    expect(Math.abs(a - b)).toBeLessThan(6);
+  });
+});
+
+describe('apcaVerdict', () => {
+  it('answers in terms of what the text is for', () => {
+    // A single pass/fail cannot carry APCA's answer, which depends on size
+    // and weight. "Fine for body text" is more use than "AA".
+    expect(apcaVerdict(90).level).toBe('any text');
+    expect(apcaVerdict(65).level).toBe('body text');
+    expect(apcaVerdict(20).level).toBe('not readable');
+  });
+
+  it('uses the magnitude, not the sign', () => {
+    expect(apcaVerdict(-90).level).toBe(apcaVerdict(90).level);
+  });
+
+  it('is kinder to large text, as the model is', () => {
+    expect(apcaVerdict(50, { fontSizePx: 32 }).ok).toBe(true);
+    expect(apcaVerdict(50, { fontSizePx: 14 }).ok).toBe(false);
   });
 });

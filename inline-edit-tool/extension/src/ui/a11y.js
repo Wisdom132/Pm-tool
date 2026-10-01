@@ -16,7 +16,13 @@
 //  finding to whoever owns the stylesheet.
 // ============================================================
 
-import { effectiveColors, contrastRatio, wcagVerdict } from "./contrast.js";
+import {
+  apcaContrast,
+  apcaVerdict,
+  contrastRatio,
+  effectiveColors,
+  wcagVerdict,
+} from "./contrast.js";
 import { annotationFor } from "../element-selector.js";
 
 const P = "__iet";
@@ -83,6 +89,18 @@ export function auditElement(el, win = window) {
         kind: verdict.aa ? "pass" : "fail",
         label: "Contrast",
         detail: `${verdict.ratio}:1 — ${level}${verdict.large ? " (large text)" : ""}`,
+      });
+
+      // APCA alongside, not instead. WCAG 2 is what compliance is still
+      // measured against, and APCA is what the eye actually does — they
+      // disagree most in the middle of the range, which is where most real
+      // text lives. Showing both says more than either.
+      const lc = apcaContrast(colors.fg, colors.bg);
+      const apca = apcaVerdict(lc, colors);
+      rows.push({
+        kind: apca.ok ? "pass" : "warn",
+        label: "APCA",
+        detail: `Lc ${lc} — ${apca.level}`,
       });
     }
   }

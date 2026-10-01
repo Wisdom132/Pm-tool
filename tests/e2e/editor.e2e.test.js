@@ -934,6 +934,295 @@ describe('design tool', () => {
   });
 });
 
+describe('rearrange on an unannotated container — the reported failure', () => {
+  it('works on a container, which is what people actually move', () => {
+    // The bug: provenance was only stamped on text-bearing elements and the
+    // template root, so a container had no annotation and Rearrange refused.
+    // On a real page that was four elements in five — the tool opened, the
+    // buttons were disabled, and it read as broken.
+    return (async () => {
+      await page.evaluate(() =>
+        chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'structure' })
+      );
+      await page.waitForTimeout(150);
+
+      // A container with provenance but no editable text of its own.
+      await page.evaluate(() => {
+        const wrap = document.createElement('div');
+        wrap.id = 'movable';
+        wrap.dataset.editFile = 'src/pages/index.jsx';
+        wrap.dataset.editLine = '60';
+        wrap.dataset.editCol = '2';
+        wrap.dataset.editFramework = 'react';
+        wrap.appendChild(document.createElement('img'));
+
+        const sibling = wrap.cloneNode(true);
+        sibling.id = 'sibling';
+        sibling.dataset.editLine = '64';
+
+        const host = document.querySelector('section.banner');
+        host.append(wrap, sibling);
+        wrap.click();
+      });
+      await page.waitForTimeout(250);
+
+      const buttons = await page.evaluate(() =>
+        [...__IET_TEST__.root.querySelectorAll('.__iet-struct-btn')].map((b) => b.disabled)
+      );
+      expect(buttons.every((d) => !d)).toBe(true);
+
+      await page.keyboard.press('ArrowDown');
+      await page.waitForTimeout(250);
+      expect((await state()).count).toBe(1);
+    })();
+  });
+
+  it('reorders with either axis', async () => {
+    // Vertical lists want up/down, rows want left/right, and the tool
+    // cannot tell which it is looking at.
+    await page.evaluate(() =>
+      chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'structure' })
+    );
+    await page.click('#steps li:nth-of-type(1)');
+    await page.waitForTimeout(200);
+
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(250);
+
+    expect((await state()).count).toBe(1);
+  });
+});
+
+describe('position, as classes rather than pixels', () => {
+  const CARD = '#util-card';
+
+  const rows = () =>
+    page.evaluate(() =>
+      [...__IET_TEST__.root.querySelectorAll('.__iet-design-row')].map((r) => ({
+        id: r.dataset.row,
+        value: r.querySelector('.__iet-design-value').textContent,
+        inert: r.dataset.inert === 'true',
+      }))
+    );
+
+  beforeEach(async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'design' }));
+    await page.waitForTimeout(150);
+    await page.evaluate((sel) => document.querySelector(sel).click(), CARD);
+    await page.waitForTimeout(200);
+  });
+
+  it('offers position and its offsets', async () => {
+    const ids = (await rows()).map((r) => r.id);
+    expect(ids).toEqual(expect.arrayContaining(['position', 'top', 'left', 'zIndex']));
+  });
+
+  it('dims offsets that cannot take effect yet', async () => {
+    // `top-4` does nothing on a statically positioned element. Showing the
+    // row dimmed says why the key had no effect; hiding it would not.
+    const top = (await rows()).find((r) => r.id === 'top');
+    expect(top.inert).toBe(true);
+  });
+
+  it('cycles the position mode and enables the offsets', async () => {
+    // Walk focus down to the position row and cycle it.
+    const index = (await rows()).findIndex((r) => r.id === 'position');
+    for (let i = 0; i < index; i++) await page.keyboard.press('Shift+ArrowDown');
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(250);
+
+    expect(await page.getAttribute(CARD, 'class')).toContain('relative');
+    const top = (await rows()).find((r) => r.id === 'top');
+    expect(top.inert).toBe(false);
+  });
+
+  it('records the mode change as a class edit', async () => {
+    const index = (await rows()).findIndex((r) => r.id === 'position');
+    for (let i = 0; i < index; i++) await page.keyboard.press('Shift+ArrowDown');
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(250);
+
+    const edits = await page.evaluate(async () => {
+      const stored = await chrome.storage.local.get(['editSession']);
+      return stored.editSession?.edits ?? [];
+    });
+    expect(edits).toHaveLength(1);
+    expect(edits[0].newText).toContain('relative');
+    expect(edits[0].newText).not.toContain('__iet');
+  });
+});
+
+describe('keyboard traversal', () => {
+  beforeEach(async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'inspect' }));
+    await page.waitForTimeout(150);
+  });
+
+  /**
+   * The *text* of the inspected element, not its tag.
+   *
+   * Three <li> render an identical title, so a tag-based assertion passes
+   * whether traversal moved or not — it was green for the wrong reason
+   * before this.
+   */
+  const inspected = () =>
+    page.evaluate(() => {
+      const card = __IET_TEST__.root.querySelector('#__iet-inspector');
+      if (!card || card.hidden) return null;
+      const rows = [...card.querySelectorAll('dt')];
+      const text = rows.find((dt) => dt.textContent === 'Text');
+      const title = card.querySelector('.__iet-inspector-title')?.textContent ?? '';
+      return `${title} ${text?.nextElementSibling?.textContent ?? ''}`.trim();
+    });
+
+  it('tab walks to the next sibling', async () => {
+    await page.click('#steps li:nth-of-type(1)');
+    await page.waitForTimeout(200);
+    expect(await inspected()).toContain('Install the plugin');
+
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(300);
+
+    expect(await inspected()).toContain('Deploy a preview');
+  });
+
+  it('shift+enter goes up to the parent', async () => {
+    await page.click('#steps li:nth-of-type(1)');
+    await page.waitForTimeout(200);
+
+    await page.keyboard.press('Shift+Enter');
+    await page.waitForTimeout(300);
+
+    // The <ul> that holds the list items.
+    expect(await inspected()).toContain('ul');
+  });
+
+  it('enter descends into the first child', async () => {
+    await page.evaluate(() => document.querySelector('#steps').click());
+    await page.waitForTimeout(250);
+
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(350);
+
+    expect(await inspected()).toContain('Install the plugin');
+  });
+
+  it('does nothing at the end rather than wrapping', async () => {
+    await page.click('#steps li:nth-of-type(3)');
+    await page.waitForTimeout(200);
+    expect(await inspected()).toContain('Edit and open a PR');
+
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(250);
+
+    // A key that silently changes level is one nobody can predict.
+    expect(await inspected()).toContain('Edit and open a PR');
+  });
+});
+
+describe('multi-select', () => {
+  it('shift-click accumulates, and the design tool changes all of them', async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'design' }));
+    await page.waitForTimeout(150);
+
+    // Three list items, identical classes — so they share a starting value.
+    await page.evaluate(() => {
+      for (const li of document.querySelectorAll('#steps li')) li.className = 'p-2 text-sm';
+    });
+
+    await page.click('#steps li:nth-of-type(1)');
+    await page.waitForTimeout(150);
+    await page.click('#steps li:nth-of-type(2)', { modifiers: ['Shift'] });
+    await page.click('#steps li:nth-of-type(3)', { modifiers: ['Shift'] });
+    await page.waitForTimeout(200);
+
+    const marked = await page.locator('.__iet-selected').count();
+    expect(marked).toBe(3);
+
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(300);
+
+    const classes = await page.evaluate(() =>
+      [...document.querySelectorAll('#steps li')].map((li) =>
+        [...li.classList].filter((c) => !c.startsWith('__iet')).join(' ')
+      )
+    );
+    // One gesture, three elements, same result on each.
+    expect(classes.every((c) => c.includes('p-2.5'))).toBe(true);
+  });
+
+  it('leaves alone the ones that started from something different', async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'design' }));
+    await page.evaluate(() => {
+      const items = document.querySelectorAll('#steps li');
+      items[0].className = 'p-2';
+      items[1].className = 'p-2';
+      items[2].className = 'p-8'; // different starting value
+    });
+    await page.waitForTimeout(150);
+
+    await page.click('#steps li:nth-of-type(1)');
+    await page.click('#steps li:nth-of-type(2)', { modifiers: ['Shift'] });
+    await page.click('#steps li:nth-of-type(3)', { modifiers: ['Shift'] });
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(300);
+
+    const classes = await page.evaluate(() =>
+      [...document.querySelectorAll('#steps li')].map((li) =>
+        [...li.classList].filter((c) => !c.startsWith('__iet')).join(' ')
+      )
+    );
+
+    expect(classes[0]).toContain('p-2.5');
+    expect(classes[1]).toContain('p-2.5');
+    // Untouched — and the toast says so rather than hiding it.
+    expect(classes[2]).toContain('p-8');
+  });
+});
+
+describe('inspect shows what was actually styled', () => {
+  it('lists only properties that differ from the default', async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'inspect' }));
+    await page.evaluate(() => {
+      const el = document.querySelector('h1[data-edit-file="src/pages/index.jsx"]');
+      el.style.padding = '24px';
+      el.style.opacity = '0.8';
+    });
+    await page.click('h1[data-edit-file="src/pages/index.jsx"]');
+    await page.waitForTimeout(250);
+
+    const text = await page.evaluate(
+      () => __IET_TEST__.root.querySelector('#__iet-inspector').textContent
+    );
+
+    expect(text).toContain('Styled');
+    expect(text).toContain('24px');
+    // getComputedStyle has ~340 properties; the card must not be a dump.
+    expect(text).not.toContain('border-collapse');
+  });
+});
+
+describe('APCA alongside WCAG', () => {
+  it('reports both, because they disagree where it matters', async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'a11y' }));
+    await page.waitForTimeout(150);
+    await page.click(heroSelector);
+    await page.waitForTimeout(250);
+
+    const rows = await page.evaluate(() =>
+      [...__IET_TEST__.root.querySelectorAll('.__iet-a11y-row')].map((r) => ({
+        label: r.querySelector('strong').textContent,
+        detail: r.querySelector('.__iet-a11y-detail').textContent,
+      }))
+    );
+
+    const apca = rows.find((r) => r.label === 'APCA');
+    expect(apca).toBeTruthy();
+    expect(apca.detail).toMatch(/^Lc -?\d+(\.\d+)? — /);
+    expect(rows.find((r) => r.label === 'Contrast')).toBeTruthy();
+  });
+});
+
 describe('responsive preview', () => {
   const toggle = () =>
     page.evaluate(() => __IET_TEST__.root.querySelector('[data-id="responsive"]').click());

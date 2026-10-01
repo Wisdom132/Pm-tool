@@ -116,9 +116,13 @@ describe('annotateSource', () => {
     expect(out).toContain('data-edit-file');
   });
 
-  it('skips a nested element holding an expression entirely', () => {
+  it('annotates a nested element holding an expression, but does not offer it', () => {
+    // `{count}` is computed, so there is no copy to rewrite — but the
+    // element still came from this file, and Rearrange and Design need to
+    // know that.
     const out = annotateSource('<div>Copy<p>{count} deploys</p></div>', FILE);
-    expect(/<p\s+data-edit-file/.test(out)).toBe(false);
+    expect(/<p\s+data-edit-file/.test(out)).toBe(true);
+    expect(/<p\s+[^>]*data-editable/.test(out)).toBe(false);
   });
 
   it('does not offer an element with child elements for editing', () => {

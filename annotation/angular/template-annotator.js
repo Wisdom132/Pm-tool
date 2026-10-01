@@ -102,7 +102,13 @@ function annotateSource(source, filePath, framework, lineOffset = 0) {
     // A root still earns provenance even with no text of its own: without
     // it, an image or an icon has no annotated ancestor, and Inspect and
     // Comment can name no file for it.
-    if (!editable && !isRoot) continue;
+    // Provenance goes on every element, not only editable ones and the
+    // root. Containers are what Rearrange moves and what Design pads, and
+    // without an annotation those tools refuse — on a real page that was
+    // four elements in five. `data-editable` stays narrow; only the claim
+    // "this came from here" is widened, and that claim is true of every
+    // element the file produced.
+    void isRoot;
 
     const line = lineAt(source, tagStart) + lineOffset;
     const col = columnAt(source, tagStart);

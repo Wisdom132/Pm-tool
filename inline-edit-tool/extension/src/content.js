@@ -29,6 +29,8 @@ import { createGuideLayer } from "./ui/guides.js";
 import { createToolCard } from "./ui/tool-card.js";
 import { createA11yCard } from "./ui/a11y.js";
 import { createSearchPanel } from "./ui/search.js";
+import { traverse } from "./traversal.js";
+import { createSelection, partition } from "./selection.js";
 import { createPropertiesPanel } from "./ui/properties.js";
 import { createDesignPanel } from "./ui/design-panel.js";
 import { createStructureBar } from "./ui/structure-bar.js";
@@ -53,6 +55,8 @@ const CLS = {
   editing: `${P}-editing`,
   dirty: `${P}-dirty`,
   removed: `${P}-removed`,
+  /** One of several picked together. */
+  selected: `${P}-selected`,
 };
 
 const SESSION_STORAGE_KEY = "editSession";
@@ -83,6 +87,8 @@ let inspector = null;
 let guides = null;
 let properties = null;
 let design = null;
+/** Multi-select. Shift-click accumulates; tools act on all of it. */
+const selection = createSelection();
 let structureBar = null;
 let sourcePanel = null;
 let crumbsEl = null;
@@ -390,6 +396,8 @@ function selectTool(toolId) {
   // is no longer active reads as the new tool's doing.
   pinnedEl = null;
   guides.clearMeasure();
+  selection.clear();
+  paintSelection();
 
   if (INTERACTIVE_TOOLS.has(toolId)) {
     if (!wasInteractive) setupInteraction();
@@ -439,6 +447,7 @@ function setupInteraction() {
   // from event.target means the innermost editable element wins — with
   // per-element capture listeners an outer <div> swallowed clicks intended
   // for a <span> inside it.
+  document.addEventListener("mousedown", onDocumentMouseDown, true);
   document.addEventListener("click", onDocumentClick, true);
   document.addEventListener("mouseover", onDocumentHover, true);
   document.addEventListener("mouseout", onDocumentUnhover, true);
@@ -455,6 +464,7 @@ function teardownInteraction() {
   pinnedEl = null;
   toolCard?.hide();
 
+  document.removeEventListener("mousedown", onDocumentMouseDown, true);
   document.removeEventListener("click", onDocumentClick, true);
   document.removeEventListener("mouseover", onDocumentHover, true);
   document.removeEventListener("mouseout", onDocumentUnhover, true);
@@ -701,6 +711,20 @@ function hideCrumbs() {
 // ============================================================
 //  Click → whatever the active tool does
 // ============================================================
+/**
+ * Drag-to-place, for the Design tool.
+ *
+ * Only on an element the panel is already showing, and only when it is
+ * positioned — dragging a static element would move nothing, and a gesture
+ * that silently does nothing is worse than one that is not offered.
+ */
+function onDocumentMouseDown(e) {
+  if (activeTool !== TOOL.DESIGN || !design.visible || isOwnUi(e.target)) return;
+  if (design.target !== editableFrom(e.target)) return;
+
+  design.beginDrag(e);
+}
+
 function onDocumentClick(e) {
   // Our own UI handles its own clicks. This listener is on the capture
   // phase, so without this guard it runs *before* a button inside the
@@ -741,7 +765,32 @@ function onDocumentClick(e) {
   }
   e.preventDefault();
   e.stopPropagation();
+
+  // Shift-click builds a selection instead of replacing it. Changing the
+  // padding on six cards should be one gesture, not six — and more
+  // importantly one *decision*, rather than five done by hand and a sixth
+  // forgotten.
+  if (e.shiftKey && MULTI_SELECT_TOOLS.has(activeTool)) {
+    selection.toggle(el);
+    paintSelection();
+    return;
+  }
+
+  selection.set(el);
+  paintSelection();
   activateOn(el, e);
+}
+
+/** Tools where acting on several elements at once is meaningful. */
+const MULTI_SELECT_TOOLS = new Set([TOOL.DESIGN, TOOL.INSPECT]);
+
+/** Show which elements are in the selection, beyond the one being hovered. */
+function paintSelection() {
+  for (const el of document.querySelectorAll(`.${CLS.selected}`)) {
+    el.classList.remove(CLS.selected);
+  }
+  if (selection.size < 2) return;
+  for (const el of selection.items) el.classList.add(CLS.selected);
 }
 
 /**
@@ -1532,6 +1581,30 @@ function onKeydown(e) {
 
   if (isTypingTarget(e)) return;
 
+  // Walk the page by keyboard. Tab moves along a level, enter moves between
+  // levels — VisBug's mapping, and a good one because it follows how the DOM
+  // is shaped rather than how the screen happens to be laid out.
+  if ((e.key === "Tab" || e.key === "Enter") && INTERACTIVE_TOOLS.has(activeTool)) {
+    const from = selection.anchor ?? hoveredEl;
+    if (from?.isConnected) {
+      const accepts = WHOLE_PAGE_TOOLS.has(activeTool)
+        ? () => true
+        : (el) => el.classList.contains(CLS.editable);
+
+      const next = traverse(from, e.key, { shift: e.shiftKey, accepts });
+      if (next) {
+        e.preventDefault();
+        e.stopPropagation();
+        next.el.scrollIntoView({ block: "center", behavior: "smooth" });
+        selection.set(next.el);
+        paintSelection();
+        activateOn(next.el);
+        toast.show(next.how, { tone: "info", duration: 900 });
+        return;
+      }
+    }
+  }
+
   // The trainer: bring the gesture card back after it got out of the way.
   // shift+/ lands as "?", matching VisBug's habit exactly.
   if (e.key === "?" && INTERACTIVE_TOOLS.has(activeTool)) {
@@ -1549,15 +1622,30 @@ function onKeydown(e) {
       // Shift moves between rows; plain arrows change the value, because
       // changing a value is what somebody does ten times in a row.
       if (e.shiftKey) design.moveFocus(e.key === "ArrowUp" ? -1 : 1);
-      else design.step(e.key === "ArrowUp" ? 1 : -1);
+      else stepDesign(e.key === "ArrowUp" ? 1 : -1);
       return;
     }
   }
 
   if (activeTool === TOOL.STRUCTURE && structureBar.visible && structureBar.target) {
-    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+    // Both axes move a sibling. VisBug uses left/right for order and
+    // reserves up/down for changing nesting level; we accept either pair
+    // for order, because on a vertical list "up" is what people reach for
+    // and on a row it is "left", and the tool cannot know which it is
+    // looking at.
+    //
+    // Nesting is deliberately *not* bound. Popping an element out of its
+    // parent is a re-parenting edit, and the codemod moves siblings by a
+    // signed offset — it has no way to express "and also change your
+    // parent". Binding a key that quietly did nothing, or worse produced a
+    // pull request that did something else, is the failure this tool exists
+    // to avoid.
+    const back = e.key === "ArrowUp" || e.key === "ArrowLeft";
+    const forward = e.key === "ArrowDown" || e.key === "ArrowRight";
+
+    if (back || forward) {
       e.preventDefault();
-      recordStructuralEdit(e.key === "ArrowUp" ? "move-up" : "move-down", structureBar.target);
+      recordStructuralEdit(back ? "move-up" : "move-down", structureBar.target);
       return;
     }
   }
@@ -1588,6 +1676,40 @@ function onKeydown(e) {
     e.preventDefault();
     search.toggle();
   }
+}
+
+/**
+ * Step the design property across everything selected.
+ *
+ * Only across elements that *start* from the same value, because "one more
+ * step" applied to six different starting values produces six different
+ * results from one gesture — which reads as a bug, and lands in the pull
+ * request as six unrelated-looking hunks. The rest are reported rather than
+ * silently skipped: somebody who picked six and changed four needs telling.
+ */
+function stepDesign(direction) {
+  const picked = selection.size > 1 ? selection.items : [design.target];
+
+  if (picked.length === 1) {
+    design.step(direction);
+    return;
+  }
+
+  const { apply, skipped } = partition(picked, (el) =>
+    Array.from(el.classList)
+      .filter((c) => !c.startsWith(P))
+      .sort()
+      .join(" ")
+  );
+
+  for (const el of apply) design.applyTo(el, direction);
+
+  toast.show(
+    skipped.length
+      ? `Changed ${apply.length}; left ${skipped.length} alone — they started from something different.`
+      : `Changed ${apply.length} elements`,
+    { tone: skipped.length ? "warn" : "info", duration: 2600 }
+  );
 }
 
 // ============================================================

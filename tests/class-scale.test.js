@@ -2,6 +2,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   FONT_SCALE,
+  MODES,
+  findMode,
+  nearestSpacing,
+  stepMode,
   PROPERTIES,
   SPACING_SCALE,
   findUtilityClass,
@@ -193,5 +197,95 @@ describe('the font scale is ordered', () => {
   it('runs smallest to largest', () => {
     expect(FONT_SCALE.indexOf('sm')).toBeLessThan(FONT_SCALE.indexOf('lg'));
     expect(FONT_SCALE.indexOf('lg')).toBeLessThan(FONT_SCALE.indexOf('4xl'));
+  });
+});
+
+// ============================================================
+//  Positioning
+//
+//  VisBug's Position tool writes `left: 347px` inline, from
+//  wherever the mouse stopped. The gesture is right; the output
+//  is markup no codebase wants. These are the pieces that make
+//  the same gesture produce a class somebody would have
+//  written.
+// ============================================================
+describe('position modes', () => {
+  it('cycles rather than steps, because the modes are not ordered', () => {
+    // `absolute` is not "more" than `relative`, so an end to refuse at
+    // would be arbitrary.
+    expect(stepMode(['card'], 'position', 1).to).toBe('relative');
+    expect(stepMode(['relative'], 'position', 1).to).toBe('absolute');
+    expect(stepMode(['absolute'], 'position', -1).to).toBe('relative');
+  });
+
+  it('wraps at both ends', () => {
+    expect(stepMode(['sticky'], 'position', 1).to).toBe('static');
+    expect(stepMode(['static'], 'position', -1).to).toBe('sticky');
+  });
+
+  it('removes every other mode, not just the one it found', () => {
+    // A merge can leave two behind, and keeping one would make the class
+    // list say something different from what the panel shows.
+    const result = stepMode(['absolute', 'fixed', 'card'], 'position', 1);
+    const modes = result.classes.filter((c) => MODES.position.includes(c));
+    expect(modes).toHaveLength(1);
+    expect(result.classes).toContain('card');
+  });
+
+  it('finds the mode in use', () => {
+    expect(findMode(['card', 'absolute'], 'position')).toMatchObject({ value: 'absolute' });
+    expect(findMode(['card'], 'position')).toBeNull();
+    // A variant belongs to a breakpoint nobody can currently see.
+    expect(findMode(['md:absolute'], 'position')).toBeNull();
+  });
+});
+
+describe('position offsets', () => {
+  it('steps on the spacing scale', () => {
+    expect(step('top-4', 'top', 1).to).toBe('top-5');
+    expect(step('left-2', 'left', -1).to).toBe('left-1.5');
+  });
+
+  it('goes negative, which is most of what positioning is for', () => {
+    expect(step('top-0', 'top', -1).to).toBe('-top-px');
+    expect(step('-left-4', 'left', 1).to).toBe('-left-3.5');
+  });
+
+  it('steps z-index on its own scale', () => {
+    expect(step('z-10', 'zIndex', 1).to).toBe('z-20');
+    expect(stepClass(['z-50'], 'zIndex', 1)).toBeNull();
+  });
+});
+
+describe('nearestSpacing — what makes a drag committable', () => {
+  it('snaps a pixel distance to the nearest real step', () => {
+    // 48px is `12` on a 16px root. Without snapping a drag produces
+    // `top-[47px]`, which is a real class and a diff nobody wants.
+    expect(nearestSpacing(48).value).toBe('12');
+    expect(nearestSpacing(47).value).toBe('12');
+    expect(nearestSpacing(16).value).toBe('4');
+  });
+
+  it('keeps the direction', () => {
+    expect(nearestSpacing(-48)).toMatchObject({ value: '12', negative: true });
+    expect(nearestSpacing(48)).toMatchObject({ negative: false });
+  });
+
+  it('snaps a tiny drag to a tiny step rather than to zero', () => {
+    // Dragging two pixels should do *something*, or the gesture feels dead.
+    const near = nearestSpacing(2);
+    expect(['px', '0.5']).toContain(near.value);
+  });
+
+  it('honours a non-default root font size', () => {
+    // The scale is in rem, so a page with 20px root has different pixels
+    // per step — reading 16 would be wrong on every such page.
+    expect(nearestSpacing(80, 20).value).toBe('16');
+  });
+
+  it('never returns a value that is not on the scale', () => {
+    for (const px of [0, 1, 7, 13, 99, 500, -3, -250]) {
+      expect(SPACING_SCALE, `${px}px`).toContain(nearestSpacing(px).value);
+    }
   });
 });

@@ -113,7 +113,16 @@ function collectMutations(
     if (!/^[A-Z]/.test(tag)) {
       const i18nKey = isEditable(node, NodeTypes) ? null : i18nKeyOf(node, NodeTypes);
 
-      if (isEditable(node, NodeTypes) || i18nKey || isTemplateRoot) {
+      // Provenance on *every* element this file produced, not only the ones
+      // whose text can be rewritten.
+      //
+      // It was previously limited to editable elements, i18n elements and
+      // the template root — which left containers with no annotation at
+      // all. Containers are exactly what Rearrange moves and what Design
+      // pads, so those tools refused on roughly four elements in five. The
+      // comment below already said provenance should be wide; the condition
+      // never was.
+      {
         const alreadyAnnotated =
           Array.isArray(node.props) &&
           node.props.some(

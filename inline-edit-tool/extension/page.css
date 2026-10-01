@@ -26,6 +26,25 @@
 /* Acting on it. The same hue, because a darker shade would be harder to
    see on a dark site and this has to be the strongest thing on screen —
    so the ring carries the difference instead of a second colour. */
+/* The text an editing overlay is standing in for.
+   
+   Applied to the element being edited so its own copy of the text cannot
+   show through the overlay. It covers descendants too: `color` inherits,
+   but a child with an explicit colour of its own does not inherit the
+   transparent value, and that child's text would show through.
+
+   The other two properties are not redundant. `text-shadow` is painted from
+   the glyphs regardless of their colour, so transparent text with a shadow
+   is still visible as a blur. And `-webkit-text-fill-color`, which gradient
+   text sets, *overrides* `color` outright — without resetting it here,
+   `color: transparent` would do nothing at all on those headings. */
+.__iet-text-hidden,
+.__iet-text-hidden * {
+  color: transparent !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
 .__iet-editing {
   outline: 2px solid #22d3ee !important;
   outline-offset: 2px !important;
@@ -51,4 +70,12 @@
   .__iet-editable {
     transition: outline-color 0.1s ease;
   }
+}
+
+/* One of several elements picked together. Deliberately a different
+   treatment from the hover ring: before changing six things at once, you
+   have to be able to see which six. */
+.__iet-selected {
+  outline: 2px dashed var(--iet-accent, #06b6d4) !important;
+  outline-offset: 1px !important;
 }

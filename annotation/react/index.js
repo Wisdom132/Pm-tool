@@ -127,7 +127,13 @@ module.exports = function babelPluginInlineEditAnnotation({ types: t }) {
         const parent = jsxElement.parent ?? jsxPath.parentPath?.parent;
         const isRoot = !t.isJSXElement(parent) && !t.isJSXFragment(parent);
 
-        if (!editableText && !i18nKey && !isRoot) return;
+        // Provenance goes on every element, not only editable ones and the
+        // root. Containers are what Rearrange moves and what Design pads, and
+        // without an annotation those tools refuse — on a real page that was
+        // four elements in five. `data-editable` stays narrow; only the claim
+        // "this came from here" is widened, and that claim is true of every
+        // element the file produced.
+        void isRoot;
 
         // Source location
         const loc = jsxPath.node.loc;

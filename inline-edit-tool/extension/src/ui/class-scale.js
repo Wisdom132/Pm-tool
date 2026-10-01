@@ -59,6 +59,21 @@ export const OPACITY_SCALE = [
   "95", "100",
 ];
 
+/** Z-index, in the steps Tailwind ships. */
+export const Z_SCALE = ["0", "10", "20", "30", "40", "50"];
+
+/**
+ * Mutually exclusive bare class names.
+ *
+ * Positioning is not a scale — `absolute` is not "more" than `relative` —
+ * so these cycle rather than step, and setting one removes the others.
+ * Modelled separately because a stepper that pretended they were ordered
+ * would offer "one more absolute", which means nothing.
+ */
+export const MODES = {
+  position: ["static", "relative", "absolute", "fixed", "sticky"],
+};
+
 /**
  * The properties a design tool can step, and how each maps to a class.
  *
@@ -75,6 +90,15 @@ export const PROPERTIES = {
   radius: { prefixes: ["rounded"], scale: RADIUS_SCALE, css: "border-radius" },
   shadow: { prefixes: ["shadow"], scale: SHADOW_SCALE, css: "box-shadow" },
   opacity: { prefixes: ["opacity"], scale: OPACITY_SCALE, css: "opacity" },
+
+  // Positioning offsets. Negatable, because pulling something up and left
+  // out of its box is most of what positioning is for.
+  top: { prefixes: ["top"], scale: SPACING_SCALE, css: "top", negatable: true },
+  right: { prefixes: ["right"], scale: SPACING_SCALE, css: "right", negatable: true },
+  bottom: { prefixes: ["bottom"], scale: SPACING_SCALE, css: "bottom", negatable: true },
+  left: { prefixes: ["left"], scale: SPACING_SCALE, css: "left", negatable: true },
+  inset: { prefixes: ["inset-x", "inset-y", "inset"], scale: SPACING_SCALE, css: "inset", negatable: true },
+  zIndex: { prefixes: ["z"], scale: Z_SCALE, css: "z-index" },
 };
 
 /**
@@ -224,4 +248,89 @@ export function usesUtilityClasses(doc = document) {
   }
 
   return false;
+}
+
+/**
+ * Which mode class this element currently has, if any.
+ *
+ * @returns {{className: string, value: string}|null}
+ */
+export function findMode(classList, property) {
+  const modes = MODES[property];
+  if (!modes) return null;
+
+  for (const name of Array.from(classList)) {
+    if (name.includes(":")) continue;
+    if (modes.includes(name)) return { className: name, value: name };
+  }
+  return null;
+}
+
+/**
+ * Cycle to the next mode, removing whichever one is set.
+ *
+ * Wraps, unlike `stepClass`. A scale has ends worth refusing at; a cycle of
+ * five positioning modes does not — stopping at `sticky` would just mean
+ * pressing the other arrow five times to get back to `static`.
+ *
+ * @returns {{from: string|null, to: string, classes: string[]}|null}
+ */
+export function stepMode(classList, property, direction) {
+  const modes = MODES[property];
+  if (!modes) return null;
+
+  const names = Array.from(classList);
+  const current = findMode(names, property);
+
+  const at = current ? modes.indexOf(current.value) : 0;
+  const next = (at + direction + modes.length) % modes.length;
+  const to = modes[next];
+
+  // Every other mode is removed, not just the one found: a page can have
+  // ended up with two through a merge, and leaving one behind would make
+  // the class list say something different from what the panel shows.
+  const kept = names.filter((n) => !modes.includes(n));
+
+  return {
+    from: current?.className ?? null,
+    to,
+    // `static` is the default, so naming it explicitly is noise in the diff
+    // — unless something above it set a position that needs overriding,
+    // which is exactly when somebody reaches for it.
+    classes: [...kept, to],
+  };
+}
+
+/**
+ * The nearest value on a scale to a pixel distance.
+ *
+ * What makes a drag committable: the pointer lands on an arbitrary number,
+ * and this turns it into the class the codebase would have written. Without
+ * it a drag produces `top-[347px]`, which is a real class and a diff nobody
+ * wants to review.
+ *
+ * @param {number} px
+ * @param {number} rem  the page's root font size, since the scale is in rem
+ * @returns {{value: string, negative: boolean}}
+ */
+export function nearestSpacing(px, rem = 16) {
+  const negative = px < 0;
+  const target = Math.abs(px);
+
+  let best = SPACING_SCALE[0];
+  let bestGap = Infinity;
+
+  for (const value of SPACING_SCALE) {
+    // `px` is Tailwind's literal one-pixel step; everything else is rem.
+    const size = value === "px" ? 1 : Number(value) * (rem / 4);
+    if (!Number.isFinite(size)) continue;
+
+    const gap = Math.abs(size - target);
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = value;
+    }
+  }
+
+  return { value: best, negative };
 }

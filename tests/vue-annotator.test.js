@@ -177,12 +177,14 @@ describe('provenance versus the editing contract', () => {
       .filter((m) => m[2].includes('data-edit-file'))
       .map((m) => ({ tag: m[1], editable: m[2].includes('data-editable') }));
 
-  it('annotates a component root that holds no text at all', () => {
-    // The reported case: a footer of images and icons, where nothing up the
-    // tree carried an annotation, so every comment said "no build
-    // annotation" and named no file.
-    const code = transform('  <section class="downloads">\n    <img src="/play.svg" />\n  </section>');
-    expect(marks(code)).toEqual([{ tag: 'section', editable: false }]);
+  it('annotates a container that holds no text at all', () => {
+    // Provenance is wide: a wrapper is where Rearrange and Design act, and
+    // without an annotation those tools refuse.
+    const out = transform('<section class="wrap"><img src="a.png"></section>');
+
+    expect(out).toMatch(/<section[^>]*data-edit-file/);
+    // Still not editable — there is no text for the codemod to rewrite.
+    expect(out).not.toMatch(/<section[^>]*data-editable/);
   });
 
   it('does not offer to edit that root', () => {
@@ -213,10 +215,18 @@ describe('provenance versus the editing contract', () => {
     ]);
   });
 
-  it('leaves a component root alone, since it renders elsewhere', () => {
-    // A capitalised tag hands its children to something else; annotating
-    // here would point at the wrong element.
-    const code = transform('  <AppHeader>\n    <img src="/a.svg" />\n  </AppHeader>');
-    expect(code).not.toContain('data-edit-file');
+  it('never annotates the component tag itself', () => {
+    // `<AppHeader>` is not an element — Vue replaces it with that
+    // component's own markup, so an annotation here would point at a node
+    // that never exists in the DOM.
+    //
+    // Its *children* are different: an <img> written here produces a real
+    // <img> in the DOM, sourced from this file at this line, and editing
+    // its alt text edits this file. So it is annotated, and that is the
+    // narrower, more accurate version of the old rule.
+    const out = transform('<AppHeader><img src="a.png" alt="Logo"></AppHeader>');
+
+    expect(out).not.toMatch(/<AppHeader[^>]*data-edit-file/);
+    expect(out).toMatch(/<img[^>]*data-edit-file/);
   });
 });

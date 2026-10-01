@@ -115,7 +115,13 @@ function annotateSource(source, filePath) {
     // rewrite this; `data-edit-file` says where it came from. Emitting only
     // the pair left an image, an icon or a wrapper with no annotated
     // ancestor anywhere, so Inspect and Comment could name no file for it.
-    if (!editable && !isRoot) continue;
+    // Provenance goes on every element, not only editable ones and the
+    // root. Containers are what Rearrange moves and what Design pads, and
+    // without an annotation those tools refuse — on a real page that was
+    // four elements in five. `data-editable` stays narrow; only the claim
+    // "this came from here" is widened, and that claim is true of every
+    // element the file produced.
+    void isRoot;
 
     mutations.push({
       offset: start + 1 + tag.length,

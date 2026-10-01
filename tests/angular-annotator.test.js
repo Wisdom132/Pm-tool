@@ -57,10 +57,13 @@ describe('annotateSource', () => {
     expect(out).toContain('data-edit-file');
   });
 
-  it('skips a nested element with no direct text entirely', () => {
-    // Not a root, nothing to edit: no reason to be in the markup at all.
+  it('annotates a nested element with no direct text, but does not offer it', () => {
+    // Provenance is wide and the editing contract is narrow. This used to
+    // skip such elements entirely, which left containers — the things
+    // Rearrange moves and Design pads — with no annotation at all.
     const out = annotateSource('<div>Copy<section><img src="a.png"></section></div>', FILE, 'angular');
-    expect(/<section [^>]*data-edit-file/.test(out)).toBe(false);
+    expect(/<section [^>]*data-edit-file/.test(out)).toBe(true);
+    expect(/<section [^>]*data-editable/.test(out)).toBe(false);
   });
 
   it('does not offer a whitespace-only element for editing', () => {

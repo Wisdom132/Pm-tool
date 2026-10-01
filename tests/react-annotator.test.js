@@ -81,9 +81,14 @@ describe('react annotation plugin', () => {
     expect(out).toContain('data-edit-file');
   });
 
-  it('skips a nested expression-only element entirely', () => {
-    const out = transform('<div>Copy<h1>{title}</h1></div>');
-    expect(/<h1 [^>]*data-edit-file/.test(out)).toBe(false);
+  it('annotates a nested expression-only element, but does not offer it', () => {
+    // Provenance says "this came from here", which is true. `data-editable`
+    // says "the codemod can rewrite this", which is not.
+    // Expression-*only*: `{count} deploys` would be editable, because
+    // " deploys" is literal text the codemod can rewrite.
+    const out = transform('<div>Copy<p>{count}</p></div>');
+    expect(/<p\s+data-edit-file/.test(out)).toBe(true);
+    expect(/<p\s+[^>]*data-editable/.test(out)).toBe(false);
   });
 
   it('annotates literal text sitting beside an expression', () => {

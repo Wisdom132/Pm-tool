@@ -547,7 +547,11 @@
 .__iet-edit-overlay {
   position: fixed;
   z-index: 2147483646;
-  box-sizing: content-box;
+  /* A border box, because `getBoundingClientRect()` reports one. Under
+     content-box the copied padding was added *outside* the width we set, so
+     the overlay was wider than the text it replaced and wrapped at a
+     different word. */
+  box-sizing: border-box;
   margin: 0;
   border-radius: 3px;
   outline: 2px solid var(--iet-accent);
@@ -2125,3 +2129,13 @@
 }
 
 .__iet-design-note { color: var(--iet-muted); font-size: 11px; }
+
+/* Multi-selection: the elements picked alongside the one under the pointer.
+   Distinct from the hover ring, or there is no way to tell what a change is
+   about to touch. */
+
+/* An offset that cannot take effect yet: the element is statically
+   positioned, so `top-4` would do nothing. Dimmed rather than hidden,
+   because an absent row does not explain why the key did nothing. */
+.__iet-design-row[data-inert='true'] { opacity: 0.4; }
+.__iet-design-row[data-inert='true'] .__iet-design-value { color: var(--iet-dim); }

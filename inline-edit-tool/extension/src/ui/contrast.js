@@ -142,3 +142,103 @@ export function effectiveColors(el, win = window) {
     fontWeight: Number(style.fontWeight) || 400,
   };
 }
+
+// ============================================================
+//  APCA
+//
+//  WCAG 2's ratio is a simple quotient of two luminances, and
+//  it is known to be wrong in the middle of the range — it
+//  passes some grey-on-grey pairs that are genuinely hard to
+//  read and fails some dark-on-dark pairs that are fine. APCA
+//  (the model behind WCAG 3) models perceived contrast instead,
+//  and is polarity-aware: dark-on-light and light-on-dark at
+//  the same ratio do not read the same.
+//
+//  Implemented directly rather than pulled from colorjs.io.
+//  The whole algorithm is the thirty lines below, and this
+//  runs in a content script injected into other people's
+//  pages, where a library is weight on every page load.
+//
+//  Constants are from the W3 APCA 0.1.9 lookup. They are not
+//  adjustable and not approximations — a tuned constant here
+//  produces a number that looks authoritative and is wrong.
+// ============================================================
+
+const APCA = {
+  // sRGB to luminance. A plain 2.4 power curve, not WCAG's piecewise one.
+  exp: 2.4,
+  r: 0.2126729,
+  g: 0.7151522,
+  b: 0.072175,
+
+  // Near-black is soft-clamped: below this, luminance is raised, because
+  // display black is never truly 0 and flare dominates down there.
+  blackThreshold: 0.022,
+  blackExp: 1.414,
+
+  // Normal polarity: dark text on a light background.
+  normalBg: 0.56,
+  normalText: 0.57,
+  // Reverse polarity: light text on a dark background.
+  reverseBg: 0.65,
+  reverseText: 0.62,
+
+  scale: 1.14,
+  // Below this the result is noise, and is reported as zero.
+  deadzone: 0.1,
+  offset: 0.027,
+};
+
+/** APCA screen luminance for one colour. */
+function apcaLuminance({ r, g, b }) {
+  const c = (v) => Math.pow(v / 255, APCA.exp);
+  const y = APCA.r * c(r) + APCA.g * c(g) + APCA.b * c(b);
+
+  // Soft clamp, not a hard floor: a hard floor creates a discontinuity
+  // right where dark UI themes live.
+  return y > APCA.blackThreshold ? y : y + Math.pow(APCA.blackThreshold - y, APCA.blackExp);
+}
+
+/**
+ * APCA lightness contrast, roughly -108…+106.
+ *
+ * The sign carries meaning and must not be discarded: positive is dark text
+ * on a light background, negative is light on dark. Two pairs with the same
+ * magnitude and opposite sign are different readability situations.
+ *
+ * @param {object} text  foreground, already composited over its backdrop
+ * @param {object} bg    background, opaque
+ */
+export function apcaContrast(text, bg) {
+  const ytext = apcaLuminance(text);
+  const ybg = apcaLuminance(bg);
+
+  const normal = ybg > ytext;
+  const raw = normal
+    ? (Math.pow(ybg, APCA.normalBg) - Math.pow(ytext, APCA.normalText)) * APCA.scale
+    : (Math.pow(ybg, APCA.reverseBg) - Math.pow(ytext, APCA.reverseText)) * APCA.scale;
+
+  if (Math.abs(raw) < APCA.deadzone) return 0;
+
+  const adjusted = raw > 0 ? raw - APCA.offset : raw + APCA.offset;
+  return Math.round(adjusted * 100 * 10) / 10;
+}
+
+/**
+ * What an APCA score means for real text, from the W3 draft's font table.
+ *
+ * Returned as guidance rather than pass/fail, because APCA's answer depends
+ * on size and weight in a way a single threshold cannot carry. Saying "fine
+ * for body text" is more use than "AA".
+ */
+export function apcaVerdict(lc, { fontSizePx = 16, fontWeight = 400 } = {}) {
+  const score = Math.abs(lc);
+  const weight = Number(fontWeight) || 400;
+  const large = fontSizePx >= 24 || (fontSizePx >= 18.66 && weight >= 700);
+
+  if (score >= 75) return { score, level: "any text", ok: true };
+  if (score >= 60) return { score, level: "body text", ok: true };
+  if (score >= 45) return { score, level: large ? "large text" : "headlines only", ok: large };
+  if (score >= 30) return { score, level: "large text only", ok: false };
+  return { score, level: "not readable", ok: false };
+}

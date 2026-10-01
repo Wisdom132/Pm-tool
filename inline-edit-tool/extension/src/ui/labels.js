@@ -12,6 +12,7 @@
 
 import { annotationFor } from "../element-selector.js";
 import { outdatedHint } from "../plugin-version.js";
+import { nonDefaultStyles } from "./computed-styles.js";
 
 const P = "__iet";
 
@@ -149,6 +150,28 @@ export function createInspectorCard() {
         list.append(dt, dd);
       }
       card.appendChild(list);
+
+      // What somebody actually set on this element. getComputedStyle has
+      // ~340 properties and answers no question anybody has; the handful
+      // that differ from the default is the whole of what is interesting.
+      const styles = nonDefaultStyles(el);
+      if (styles.length) {
+        const head = document.createElement("div");
+        head.className = `${P}-inspector-subhead`;
+        head.textContent = "Styled";
+        card.appendChild(head);
+
+        const sheet = document.createElement("dl");
+        sheet.className = `${P}-inspector-rows`;
+        for (const { prop, value } of styles.slice(0, 12)) {
+          const dt = document.createElement("dt");
+          dt.textContent = prop;
+          const dd = document.createElement("dd");
+          dd.textContent = value;
+          sheet.append(dt, dd);
+        }
+        card.appendChild(sheet);
+      }
 
       // Translated copy is the one feature whose absence is invisible: the
       // element looks ordinary, the edit just does not reach the locale
