@@ -76,6 +76,18 @@ export const CARDS = {
       ["Open the source editor", `${ALT} click`],
     ],
   },
+  design: {
+    title: "Design",
+    key: "D",
+    intro: "Spacing, type, radius and shadow — as the classes your codebase already uses.",
+    rows: [
+      ["Pick", "click anything"],
+      ["Step the value", "↑ ↓"],
+      ["Move between rows", `⇧ ↑ ↓`],
+      ["Open the source editor", `${ALT} click`],
+      ["Undo", `${META} Z`],
+    ],
+  },
   structure: {
     title: "Rearrange",
     key: "R",

@@ -30,6 +30,7 @@ import { createToolCard } from "./ui/tool-card.js";
 import { createA11yCard } from "./ui/a11y.js";
 import { createSearchPanel } from "./ui/search.js";
 import { createPropertiesPanel } from "./ui/properties.js";
+import { createDesignPanel } from "./ui/design-panel.js";
 import { createStructureBar } from "./ui/structure-bar.js";
 import { openSourcePanel, sourceRefFor } from "./ui/source-panel.js";
 import { openSourcePicker } from "./ui/source-picker.js";
@@ -81,6 +82,7 @@ let labels = null;
 let inspector = null;
 let guides = null;
 let properties = null;
+let design = null;
 let structureBar = null;
 let sourcePanel = null;
 let crumbsEl = null;
@@ -105,6 +107,7 @@ const INTERACTIVE_TOOLS = new Set([
   TOOL.A11Y,
   TOOL.EDIT,
   TOOL.PROPERTIES,
+  TOOL.DESIGN,
   TOOL.STRUCTURE,
   TOOL.COMMENT,
 ]);
@@ -134,6 +137,9 @@ const WHOLE_PAGE_TOOLS = new Set([
   TOOL.INSPECT,
   TOOL.A11Y,
   TOOL.PROPERTIES,
+  // Spacing and type apply to containers as readily as to text, and a
+  // container is exactly what holds padding.
+  TOOL.DESIGN,
   TOOL.STRUCTURE,
 ]);
 
@@ -186,6 +192,9 @@ function buildUi() {
     onPickImage: pickImage,
   });
   structureBar = createStructureBar({ onOp: recordStructuralEdit });
+  // The same recorder the properties panel uses: a design nudge is a class
+  // edit, so it takes the identical route into a pull request.
+  design = createDesignPanel({ onChange: recordAttributeEdit });
 
   crumbsEl = document.createElement("div");
   crumbsEl.id = `${P}-crumbs`;
@@ -200,6 +209,7 @@ function buildUi() {
     inspector.element,
     crumbsEl,
     a11yCard.element,
+    design.element,
     search.element,
     toolCard.element,
     toast.element
@@ -371,6 +381,7 @@ function selectTool(toolId) {
   properties.hide();
   structureBar.hide();
   a11yCard.hide();
+  design.hide();
   labels.hide();
   guides.hide();
   hideCrumbs();
@@ -459,6 +470,7 @@ function teardownInteraction() {
   inspector.hide();
   properties.hide();
   a11yCard.hide();
+  design.hide();
   search.close();
   structureBar.hide();
   sourcePanel?.close();
@@ -546,6 +558,8 @@ function onDomChanged() {
 function onViewportChange() {
   const anchor = activeTarget?.isConnected ? activeTarget : hoveredEl;
   properties.reposition();
+  design.reposition();
+  a11yCard.reposition(activeTarget?.isConnected ? activeTarget : hoveredEl);
   structureBar.reposition();
   if (anchor?.isConnected) {
     labels.reposition(anchor);
@@ -750,6 +764,14 @@ function activateOn(el, event) {
     guides.show(el, "selected");
     return;
   }
+  if (activeTool === TOOL.DESIGN) {
+    design.show(el);
+    labels.show(el, { state: "selected" });
+    guides.show(el, "selected");
+    hideCrumbs();
+    return;
+  }
+
   if (activeTool === TOOL.A11Y) {
     a11yCard.show(el);
     labels.show(el, { state: "selected" });
@@ -1291,8 +1313,12 @@ function elementForKey(key) {
  * The element is already updated — the panel applies changes live so the
  * page shows the result — so this only has to persist the intent.
  */
-function recordAttributeEdit({ attribute, originalValue, newValue }) {
-  const el = properties.target;
+function recordAttributeEdit({ attribute, originalValue, newValue, element }) {
+  // The element comes with the change where the caller knows it. This used
+  // to read `properties.target` unconditionally, which is null whenever the
+  // *design* panel is the one reporting — so every spacing nudge changed
+  // the page and recorded nothing, and the edit vanished on reload.
+  const el = element || properties.target || design?.target;
   if (!el) return;
 
   const key = sessionKey(el, attribute);
@@ -1517,6 +1543,17 @@ function onKeydown(e) {
   // Nudge: with an element picked in Rearrange, the arrows move it. The
   // buttons stay — the keys are for the third and fourth move in a row,
   // where reaching for a button per step is what makes reordering tedious.
+  if (activeTool === TOOL.DESIGN && design.visible && design.target) {
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      // Shift moves between rows; plain arrows change the value, because
+      // changing a value is what somebody does ten times in a row.
+      if (e.shiftKey) design.moveFocus(e.key === "ArrowUp" ? -1 : 1);
+      else design.step(e.key === "ArrowUp" ? 1 : -1);
+      return;
+    }
+  }
+
   if (activeTool === TOOL.STRUCTURE && structureBar.visible && structureBar.target) {
     if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       e.preventDefault();
@@ -1533,6 +1570,7 @@ function onKeydown(e) {
     a: TOOL.A11Y,
     e: TOOL.EDIT,
     p: TOOL.PROPERTIES,
+    d: TOOL.DESIGN,
     r: TOOL.STRUCTURE,
     c: TOOL.COMMENT,
   };

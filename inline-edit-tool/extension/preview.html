@@ -227,6 +227,21 @@
     </ul>
   </section>
 
+  <!-- A utility-class section, so the Design tool has something honest to
+       step. Without it `usesUtilityClasses` correctly refuses, and the
+       whole feature is untestable here. -->
+  <section class="utility">
+    <div id="util-card"
+         class="p-4 m-2 rounded-lg shadow-sm text-base font-normal opacity-100 gap-2"
+         data-editable="true" data-edit-file="src/pages/index.jsx"
+         data-edit-line="52" data-edit-col="4" data-edit-framework="react">
+      <h4 class="text-lg font-semibold p-2">Utility card</h4>
+      <p class="text-sm p-1 m-1">Spacing and type come from classes here.</p>
+      <button class="px-4 py-2 rounded shadow text-sm font-medium">Action</button>
+      <span class="mt-2 mb-2 ml-1 mr-1 text-xs opacity-75">Meta</span>
+    </div>
+  </section>
+
   </div><!-- /#app -->
 
   <div class="counter">

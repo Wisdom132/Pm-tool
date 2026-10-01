@@ -829,6 +829,111 @@ describe('the trainer', () => {
   });
 });
 
+describe('design tool', () => {
+  const CARD = '#util-card';
+
+  const panel = () =>
+    page.evaluate(() => {
+      const el = __IET_TEST__.root.querySelector('#__iet-design');
+      return {
+        hidden: el.hidden,
+        rows: [...el.querySelectorAll('.__iet-design-row')].map((r) => ({
+          id: r.dataset.row,
+          value: r.querySelector('.__iet-design-value').textContent,
+          focused: r.dataset.focused === 'true',
+        })),
+        note: el.querySelector('.__iet-design-note')?.textContent ?? null,
+      };
+    });
+
+  beforeEach(async () => {
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'SET_TOOL', tool: 'design' }));
+    await page.waitForTimeout(150);
+    // Dispatched on the element rather than at a coordinate: the card's
+    // children cover most of its box, and where its own padding falls is
+    // the page's business, not this test's.
+    await page.evaluate((sel) => document.querySelector(sel).click(), CARD);
+    await page.waitForTimeout(200);
+  });
+
+  it('reads the classes already on the element', async () => {
+    const p = await panel();
+    expect(p.hidden).toBe(false);
+    expect(p.note).toBeNull();
+
+    const byId = Object.fromEntries(p.rows.map((r) => [r.id, r.value]));
+    expect(byId.padding).toBe('p-4');
+    expect(byId.radius).toBe('rounded-lg');
+    expect(byId.fontSize).toBe('text-base');
+  });
+
+  it('steps along the real scale, not by arithmetic', async () => {
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(200);
+
+    // p-4 → p-5. The class has to exist, or it does nothing on the page and
+    // reads as nonsense in the diff.
+    expect(await page.getAttribute(CARD, 'class')).toContain('p-5');
+    expect(await page.getAttribute(CARD, 'class')).not.toContain('p-4');
+  });
+
+  it('stages the change as a class edit, so it reaches a pull request', async () => {
+    // The whole difference from VisBug: this survives.
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(250);
+
+    const edits = await page.evaluate(async () => {
+      const stored = await chrome.storage.local.get(['editSession']);
+      return stored.editSession?.edits ?? [];
+    });
+
+    expect(edits).toHaveLength(1);
+    expect(edits[0].attribute).toBe('className');
+    expect(edits[0].newText).toContain('p-5');
+    // Our own decoration classes must never reach the repository.
+    expect(edits[0].newText).not.toContain('__iet');
+  });
+
+  it('moves between rows with shift', async () => {
+    await page.keyboard.press('Shift+ArrowDown');
+    await page.waitForTimeout(150);
+
+    const focused = (await panel()).rows.find((r) => r.focused);
+    expect(focused.id).toBe('margin');
+
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(200);
+    expect(await page.getAttribute(CARD, 'class')).toContain('m-2.5');
+  });
+
+  it('undo puts the class back', async () => {
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(200);
+    await page.evaluate(() => chrome.runtime.__dispatchToContent({ type: 'UNDO' }));
+    await page.waitForTimeout(250);
+
+    expect(await page.getAttribute(CARD, 'class')).toContain('p-4');
+    expect((await state()).count).toBe(0);
+  });
+
+  it('refuses on a page that does not use utility classes', async () => {
+    // Stepping a class on such a codebase would add markup nobody there
+    // writes — a diff a reviewer would reject.
+    await page.evaluate(() => {
+      document.querySelectorAll('.utility').forEach((n) => n.remove());
+      for (const el of document.querySelectorAll('[class]')) {
+        el.className = [...el.classList].filter((c) => c.startsWith('__iet')).join(' ');
+      }
+    });
+    await page.click('h1[data-edit-file="src/pages/index.jsx"]');
+    await page.waitForTimeout(250);
+
+    const p = await panel();
+    expect(p.note).toMatch(/does not use utility classes/i);
+    expect(p.rows).toHaveLength(0);
+  });
+});
+
 describe('responsive preview', () => {
   const toggle = () =>
     page.evaluate(() => __IET_TEST__.root.querySelector('[data-id="responsive"]').click());

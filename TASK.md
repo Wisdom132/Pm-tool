@@ -789,6 +789,54 @@ pull request, and there is no honest codemod for "nudged this margin
 until it looked right". The class editor is the door for styling changes,
 because classes are what the source actually says.
 
+### Design tools — VisBug's catalogue, made permanent
+
+VisBug (Apache-2.0, archived August 2026) was reviewed as a possible core.
+It is not one: `grep` for persistence and source awareness across its
+`app/features` returns **nothing on both counts**. Every change it makes
+dies on refresh, which is correct for a design sandbox and the opposite of
+this product. Adopting it would mean inheriting a well-built ephemeral tool
+and retrofitting the one thing it was never built to do.
+
+What it does have is the right *catalogue*: padding, margin, type, radius,
+shadow, opacity. Those are now a **Design** tool (`d`), and the difference
+is the whole point:
+
+> VisBug writes an inline style, which evaporates. This steps the utility
+> class the codebase already uses — `p-4` → `p-5` — which goes through the
+> class editor that already works and **arrives as a reviewable line in a
+> pull request**.
+
+`class-scale.js` holds the scales literally rather than computing them,
+because Tailwind's spacing scale is not linear: 12 steps to 14, and
+arithmetic produces `p-13`, a class that does not exist, which is a silent
+no-op on the page and nonsense in the diff. Negative margins run the other
+way and cross zero by flipping sign. Responsive and state variants
+(`md:p-4`, `hover:p-4`) are deliberately not stepped — changing a breakpoint
+nobody can currently see is not a design decision anybody asked for.
+
+On a page that does not use utility classes the panel **refuses and says
+so**, rather than inventing markup that team does not write.
+
+**Two bugs found while building it:**
+
+- `recordAttributeEdit` read its element from `properties.target`
+  unconditionally, which is null whenever the design panel is the one
+  reporting. Every spacing nudge changed the page and recorded nothing, so
+  the edit vanished on reload. The element is now named by the caller.
+- `onViewportChange` never repositioned the design or accessibility cards,
+  so both drifted away from their element on scroll.
+
+Also replaced: the first `usesUtilityClasses` counted matching *elements*,
+which a page that copied one component off the internet passes. It now
+counts distinct utility *families* — spacing and type and layout — because
+breadth is what separates a codebase that committed to utilities from one
+that has `w-full` in two places.
+
+Not taken from VisBug: the sandbox-only tools with no honest source
+representation. Deliberately — `hueshift` and freehand `boxshadow` have no
+class to step and no codemod that could commit them.
+
 ### Still open on the tool
 
 - [ ] Structure ops still require a build annotation (`recordStructuralEdit`

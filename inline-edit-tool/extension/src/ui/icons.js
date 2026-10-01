@@ -106,6 +106,10 @@ const SHAPES = {
     ["circle", { cx: "12", cy: "5", r: "2" }],
     ["path", { d: "M4 9h16M12 9v6M12 15l-4 5M12 15l4 5" }],
   ],
+  design: [
+    ["rect", { x: "3", y: "3", width: "18", height: "18", rx: "2" }],
+    ["path", { d: "M3 9h18M9 3v18" }],
+  ],
   search: [
     ["circle", { cx: "11", cy: "11", r: "7" }],
     ["path", { d: "M21 21l-4.5-4.5" }],

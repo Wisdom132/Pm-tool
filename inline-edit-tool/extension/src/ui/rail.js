@@ -19,6 +19,7 @@ export const TOOL = {
   A11Y: "a11y",
   EDIT: "edit",
   PROPERTIES: "properties",
+  DESIGN: "design",
   STRUCTURE: "structure",
   COMMENT: "comment",
 };
@@ -37,6 +38,12 @@ const TOOLS = [
     icon: "properties",
     label: "Properties",
     hint: "Links, alt text and classes",
+  },
+  {
+    id: TOOL.DESIGN,
+    icon: "design",
+    label: "Design",
+    hint: "Spacing, type, radius and shadow",
   },
   {
     id: TOOL.STRUCTURE,
