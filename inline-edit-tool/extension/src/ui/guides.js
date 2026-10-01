@@ -96,6 +96,36 @@ export function segmentsBetween(a, b) {
   return segments;
 }
 
+/**
+ * Edges that *almost* line up.
+ *
+ * `segmentsBetween` answers "how far apart are these", which is the question
+ * people ask out loud. This answers the one they do not think to ask: two
+ * edges three pixels from matching were almost certainly meant to match, and
+ * nothing on screen reveals it. A real gap is a decision; a near miss is a
+ * mistake, and it survives review precisely because it is too small to see.
+ *
+ * Exact matches are excluded — there is nothing to report about an edge that
+ * is already aligned. Anything past the tolerance is excluded too: at that
+ * distance the edges were plainly not meant to meet.
+ *
+ * @param {number} tolerance px, beyond which a difference is a layout choice
+ * @returns {Array<{edge:string, delta:number}>} largest first
+ */
+export function nearMisses(a, b, tolerance = 4) {
+  const deltas = {
+    left: b.left - a.left,
+    right: b.right - a.right,
+    top: b.top - a.top,
+    bottom: b.bottom - a.bottom,
+  };
+
+  return Object.entries(deltas)
+    .filter(([, d]) => d !== 0 && Math.abs(d) <= tolerance)
+    .map(([edge, delta]) => ({ edge, delta: Math.round(delta * 10) / 10 }))
+    .sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+}
+
 function line(orientation) {
   const el = document.createElement("div");
   el.className = `${P}-guide ${P}-guide-${orientation}`;
@@ -131,7 +161,26 @@ export function createGuideLayer() {
 
   const measures = Array.from({ length: MAX_SEGMENTS }, measureNode);
 
-  layer.append(top, bottom, left, right, size, ...measures);
+  // One badge, not four. A single "left off by 3px" is a finding somebody
+  // acts on; all four edges at once is a wall of numbers nobody reads.
+  const nearMiss = document.createElement("div");
+  nearMiss.className = `${P}-nearmiss`;
+  nearMiss.hidden = true;
+
+  layer.append(top, bottom, left, right, size, nearMiss, ...measures);
+
+  /**
+   * The four alignment lines, hideable as a group.
+   *
+   * Needed because a measurement can be asked for while the guides toggle is
+   * off. Revealing the layer for the badges would otherwise reveal these too,
+   * sitting at whatever transform they last had — or at the viewport corner,
+   * having never been placed.
+   */
+  const lines = [top, bottom, left, right];
+  const setLinesVisible = (visible) => {
+    for (const el of lines) el.hidden = !visible;
+  };
 
   let enabled = true;
   /** The pinned/hovered pair, kept so scrolling can re-derive positions. */
@@ -174,6 +223,28 @@ export function createGuideLayer() {
       node.firstChild.textContent = `${seg.px}`;
       node.hidden = false;
     });
+
+    drawNearMiss();
+  }
+
+  function drawNearMiss() {
+    const pair = measured;
+    if (!pair) {
+      nearMiss.hidden = true;
+      return;
+    }
+
+    const b = pair.b.getBoundingClientRect();
+    const [worst] = nearMisses(pair.a.getBoundingClientRect(), b);
+    if (!worst) {
+      nearMiss.hidden = true;
+      return;
+    }
+
+    const sign = worst.delta > 0 ? "" : "-";
+    nearMiss.textContent = `${worst.edge} off by ${sign}${Math.abs(worst.delta)}px`;
+    nearMiss.style.transform = `translate(${b.left}px, ${Math.min(b.bottom + 6, window.innerHeight - 24)}px)`;
+    nearMiss.hidden = false;
   }
 
   return {
@@ -183,6 +254,7 @@ export function createGuideLayer() {
     show(el, state = "hover") {
       if (!enabled || !el) return;
       layer.dataset.state = state;
+      setLinesVisible(true);
       place(el);
       layer.hidden = false;
     },
@@ -190,6 +262,7 @@ export function createGuideLayer() {
     hide() {
       layer.hidden = true;
       measured = null;
+      nearMiss.hidden = true;
       for (const node of measures) node.hidden = true;
     },
 
@@ -200,11 +273,23 @@ export function createGuideLayer() {
      * "these edges", the badges say "this far apart".
      */
     measure(a, b) {
-      if (!enabled || !a || !b || a === b) {
+      if (!a || !b || a === b) {
         measured = null;
         for (const node of measures) node.hidden = true;
+        nearMiss.hidden = true;
         return;
       }
+
+      // Deliberately not gated on `enabled`. That toggle is labelled
+      // "Alignment guides — dashed lines on hover", and it governs those
+      // lines. A measurement is always something that was explicitly asked
+      // for, so the Measure tool cannot be silently dead because a view
+      // option unrelated to it happens to be switched off.
+      if (!enabled) {
+        setLinesVisible(false);
+        size.hidden = true;
+      }
+
       measured = { a, b };
       drawMeasures();
       layer.hidden = false;
@@ -213,6 +298,10 @@ export function createGuideLayer() {
     clearMeasure() {
       measured = null;
       for (const node of measures) node.hidden = true;
+      nearMiss.hidden = true;
+      // With guides off the layer exists only for the measurement, so it
+      // goes away with it rather than lingering as an empty pane.
+      if (!enabled) layer.hidden = true;
     },
 
     reposition(el) {
@@ -225,9 +314,19 @@ export function createGuideLayer() {
     /** Turning guides off hides them immediately. */
     setEnabled(value) {
       enabled = Boolean(value);
+
+      // Measuring with guides off hides the four lines, and nothing else
+      // would put them back until the next hover. Restoring here means the
+      // toggle is the whole story rather than most of it.
+      if (enabled) {
+        setLinesVisible(true);
+        return;
+      }
+
       if (!enabled) {
         layer.hidden = true;
         measured = null;
+        nearMiss.hidden = true;
         // The nodes too, not just the layer: `show()` unhides the layer,
         // and a badge left visible inside it would resurrect a measurement
         // from before the toggle.

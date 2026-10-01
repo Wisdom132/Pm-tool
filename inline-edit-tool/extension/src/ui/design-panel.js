@@ -23,10 +23,12 @@ import {
   nearestSpacing,
   findMode,
   findUtilityClass,
+  isFlexContainer,
   stepClass,
   stepMode,
   usesUtilityClasses,
 } from "./class-scale.js";
+import { placeCard } from "./placement.js";
 
 const P = "__iet";
 
@@ -41,6 +43,16 @@ const ROWS = [
   { id: "padding", label: "Padding", kind: "scale" },
   { id: "margin", label: "Margin", kind: "scale" },
   { id: "gap", label: "Gap", kind: "scale" },
+
+  // Layout. `display` comes first because making something a flex container
+  // is what unlocks the four rows under it — the same relationship position
+  // has with its offsets further down.
+  { id: "display", label: "Display", kind: "mode" },
+  { id: "flexDirection", label: "Direction", kind: "mode", needs: "flex" },
+  { id: "justifyContent", label: "Justify", kind: "mode", needs: "flex" },
+  { id: "alignItems", label: "Align", kind: "mode", needs: "flex" },
+  { id: "flexWrap", label: "Wrap", kind: "mode", needs: "flex" },
+
   { id: "fontSize", label: "Text size", kind: "scale" },
   { id: "fontWeight", label: "Weight", kind: "scale" },
   { id: "radius", label: "Radius", kind: "scale" },
@@ -59,6 +71,29 @@ const ROWS = [
 
 /** A row's label, for messages. */
 const labelOf = (id) => ROWS.find((r) => r.id === id)?.label ?? id;
+
+/**
+ * Would changing this row have no effect on the page?
+ *
+ * `justify-center` does nothing to an element that is not a flex container,
+ * and `top-4` does nothing to a statically positioned one. Both would still
+ * land in the pull request as a class somebody has to review and then puzzle
+ * over, so the row refuses rather than writing a no-op into source.
+ *
+ * Returns the unmet requirement, so the panel can say which it is.
+ *
+ * @returns {string|null}
+ */
+function unmetRequirement(row, el, classes, win = window) {
+  if (row?.needs === "position") {
+    const mode = findMode(classes, "position");
+    return !mode || mode.value === "static" ? "a position other than static" : null;
+  }
+  if (row?.needs === "flex") {
+    return isFlexContainer(el, win) ? null : "a flex or grid container";
+  }
+  return null;
+}
 
 /**
  * @param {object} opts
@@ -96,6 +131,12 @@ export function createDesignPanel({ onChange }) {
 
     const before = pageClasses(el);
     const row = ROWS.find((r) => r.id === property);
+
+    // Checked here rather than only in `apply`, so stepping across a
+    // multi-selection skips the elements the change cannot affect instead of
+    // adding a dead class to each of them.
+    if (unmetRequirement(row, el, before)) return false;
+
     const result =
       row?.kind === "mode"
         ? stepMode(before, property, direction)
@@ -122,6 +163,18 @@ export function createDesignPanel({ onChange }) {
 
   function apply(property, direction) {
     if (!target) return;
+
+    // A specific reason beats "at the largest", which would be a lie here —
+    // the row did not run out of scale, it has nothing to act on.
+    const unmet = unmetRequirement(
+      ROWS.find((r) => r.id === property),
+      target,
+      pageClasses(target)
+    );
+    if (unmet) {
+      flash(property, `needs ${unmet}`);
+      return;
+    }
 
     if (!applyTo(target, property, direction)) {
       flash(property, direction > 0 ? "at the largest" : "at the smallest");
@@ -184,12 +237,14 @@ export function createDesignPanel({ onChange }) {
       // the diff, and seeing it is how somebody learns the scale.
       value.textContent = current ? current.className : "—";
 
-      // `top-4` does nothing on a statically positioned element. Showing the
-      // row but dimming it says why the key had no effect, which an absent
-      // row does not.
-      const mode = findMode(classes, "position");
-      const inert = row.needs === "position" && (!mode || mode.value === "static");
-      if (inert) line.dataset.inert = "true";
+      // A row whose requirement is unmet is shown but dimmed: an absent row
+      // cannot explain why the key did nothing, and a dimmed one carries the
+      // reason in its title.
+      const unmet = unmetRequirement(row, el, classes);
+      if (unmet) {
+        line.dataset.inert = "true";
+        line.title = `${row.label} needs ${unmet}`;
+      }
 
       const minus = stepButton("−", () => {
         focused = row.id;
@@ -347,15 +402,7 @@ export function createDesignPanel({ onChange }) {
   }
 
   function position(el) {
-    const rect = el.getBoundingClientRect();
-    const height = card.offsetHeight || 280;
-    const width = card.offsetWidth || 260;
-
-    const below = rect.bottom + 8;
-    card.style.top = `${
-      below + height <= window.innerHeight - 8 ? below : Math.max(8, window.innerHeight - height - 8)
-    }px`;
-    card.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
+    placeCard(card, el, { width: 262, height: 280 });
   }
 
   return {

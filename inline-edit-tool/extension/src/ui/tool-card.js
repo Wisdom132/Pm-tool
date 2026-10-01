@@ -107,6 +107,20 @@ export const CARDS = {
       ["Put it back", `${META} Z`],
     ],
   },
+  measure: {
+    title: "Measure",
+    key: "M",
+    // Says outright that nothing changes. Every other tool here edits, so
+    // the safe assumption about a new one is that this does too.
+    intro: "Distances between two elements. Changes nothing.",
+    rows: [
+      ["Measure from", "click anything"],
+      ["Measure to", "then hover"],
+      ["Nested? read the insets", "hover a child"],
+      ["Release", "click it again"],
+      ["Clear", "esc"],
+    ],
+  },
   comment: {
     title: "Comment",
     key: "C",

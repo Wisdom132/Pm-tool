@@ -338,3 +338,55 @@ describe('view toggles', () => {
     expect(button(rail, TOOL.EDIT).dataset.toggle).toBeUndefined();
   });
 });
+
+// ============================================================
+//  Controls that are on but cannot act
+//
+//  A view option is a stored preference, so it stays on across
+//  pages and across tool changes. The failure it produced: with
+//  no tool selected nothing tracks the pointer, so the guides
+//  toggle sat lit and did nothing — which reads as "I turned it
+//  on and it stopped working" rather than "it is waiting".
+// ============================================================
+describe('inert controls', () => {
+  let rail;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    rail = createRail({ onTool() {}, onAction() {}, onToggle() {} });
+    document.body.append(rail.element);
+  });
+
+  const button = (id) => rail.element.querySelector(`[data-id="${id}"]`);
+
+  it('marks a control inert without unsetting it', () => {
+    // Switching the toggle off instead would lose a preference the person
+    // deliberately set, and silently.
+    rail.setToggle('guides', true, { silent: true });
+    rail.setInert('guides', true, 'Pick a tool to hover with');
+
+    expect(button('guides').dataset.inert).toBe('true');
+    expect(button('guides').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('explains itself in the tooltip while inert', () => {
+    rail.setInert('guides', true, 'Pick a tool to hover with');
+    expect(button('guides').querySelector('.__iet-tip-sub').textContent).toBe(
+      'Pick a tool to hover with'
+    );
+  });
+
+  it('puts the original hint back when it can act again', () => {
+    const before = button('guides').querySelector('.__iet-tip-sub').textContent;
+
+    rail.setInert('guides', true, 'Pick a tool to hover with');
+    rail.setInert('guides', false);
+
+    expect(button('guides').dataset.inert).toBeUndefined();
+    expect(button('guides').querySelector('.__iet-tip-sub').textContent).toBe(before);
+  });
+
+  it('is safe on an id that does not exist', () => {
+    expect(() => rail.setInert('nope', true, 'x')).not.toThrow();
+  });
+});

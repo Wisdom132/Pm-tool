@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createGuideLayer, segmentsBetween } from '../inline-edit-tool/extension/src/ui/guides.js';
+import { createGuideLayer, nearMisses, segmentsBetween } from '../inline-edit-tool/extension/src/ui/guides.js';
 
 describe('alignment guides', () => {
   let guides;
@@ -261,5 +261,156 @@ describe('the measure layer', () => {
 
     // Re-enabling must not resurrect a measurement from before the toggle.
     expect([...guides.element.querySelectorAll('.__iet-measure')].every((n) => n.hidden)).toBe(true);
+  });
+});
+
+// ============================================================
+//  Near misses
+//
+//  `segmentsBetween` answers the question people ask out loud —
+//  "how far apart are these". This answers the one they do not
+//  think to ask: two edges three pixels from matching were meant
+//  to match, and nothing on screen reveals it.
+// ============================================================
+describe('nearMisses', () => {
+  const rect = ({ top = 0, left = 0, width = 100, height = 50 }) => ({
+    top, left, width, height, right: left + width, bottom: top + height,
+  });
+
+  it('reports an edge that is nearly aligned', () => {
+    const a = rect({ left: 100 });
+    const b = rect({ left: 103, top: 200 });
+
+    expect(nearMisses(a, b)).toEqual([
+      { edge: 'left', delta: 3 },
+      { edge: 'right', delta: 3 },
+    ]);
+  });
+
+  it('says nothing about edges that already line up', () => {
+    // There is no finding in an alignment that is correct.
+    const a = rect({ left: 100, top: 0 });
+    const b = rect({ left: 100, top: 200 });
+
+    expect(nearMisses(a, b).map((m) => m.edge)).not.toContain('left');
+  });
+
+  it('ignores differences past the tolerance', () => {
+    // A 40px offset is a layout decision. Flagging it would bury the 3px
+    // mistakes under things that are working as intended.
+    const a = rect({ left: 100 });
+    const b = rect({ left: 140, top: 200 });
+
+    expect(nearMisses(a, b)).toEqual([]);
+  });
+
+  it('keeps the sign, so the direction of the error is readable', () => {
+    const a = rect({ left: 100 });
+    const b = rect({ left: 98, top: 200 });
+
+    expect(nearMisses(a, b)[0]).toMatchObject({ edge: 'left', delta: -2 });
+  });
+
+  it('puts the worst offender first', () => {
+    const a = rect({ left: 100, width: 100 });
+    const b = rect({ left: 101, width: 103, top: 200 });
+
+    // left is off by 1, right by 4 — the bigger error leads.
+    expect(nearMisses(a, b)[0].edge).toBe('right');
+  });
+
+  it('honours a caller-supplied tolerance', () => {
+    const a = rect({ left: 100 });
+    const b = rect({ left: 108, top: 200 });
+
+    expect(nearMisses(a, b)).toEqual([]);
+    expect(nearMisses(a, b, 10).map((m) => m.edge)).toContain('left');
+  });
+
+  it('rounds to a tenth rather than reporting float noise', () => {
+    // A subpixel layout reads as 2.9999999999; nobody wants that on a badge.
+    const a = rect({ left: 100 });
+    const b = rect({ left: 102.9999999, top: 200 });
+
+    expect(nearMisses(a, b)[0].delta).toBe(3);
+  });
+});
+
+describe('measuring with the guides toggle off', () => {
+  it('still measures, because the toggle governs the dashed lines', () => {
+    // The Measure tool asking for a distance is an explicit request. Gating
+    // it on an unrelated view option would make the tool silently dead for
+    // anybody who had turned guides off — the exact failure that makes a
+    // feature look broken rather than switched off.
+    const guides = createGuideLayer();
+    document.body.innerHTML = '';
+    document.body.append(guides.element);
+
+    const mk = (box) => {
+      const el = document.createElement('div');
+      el.getBoundingClientRect = () => box;
+      document.body.appendChild(el);
+      return el;
+    };
+    const a = mk({ top: 0, bottom: 50, left: 0, right: 100, width: 100, height: 50 });
+    const b = mk({ top: 200, bottom: 250, left: 0, right: 100, width: 100, height: 50 });
+
+    guides.setEnabled(false);
+    guides.measure(a, b);
+
+    expect(guides.element.hidden).toBe(false);
+  });
+
+  it('hides the alignment lines it is not being asked for', () => {
+    // Revealing the layer for the badges would otherwise reveal four dashed
+    // lines sitting at whatever transform they last had.
+    const guides = createGuideLayer();
+    document.body.innerHTML = '';
+    document.body.append(guides.element);
+
+    const mk = (box) => {
+      const el = document.createElement('div');
+      el.getBoundingClientRect = () => box;
+      document.body.appendChild(el);
+      return el;
+    };
+    const a = mk({ top: 0, bottom: 50, left: 0, right: 100, width: 100, height: 50 });
+    const b = mk({ top: 200, bottom: 250, left: 0, right: 100, width: 100, height: 50 });
+
+    guides.setEnabled(false);
+    guides.measure(a, b);
+
+    const lines = guides.element.querySelectorAll('.__iet-guide-h, .__iet-guide-v');
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) expect(line.hidden).toBe(true);
+  });
+});
+
+describe('re-enabling after a measurement', () => {
+  const mk = (box) => {
+    const el = document.createElement('div');
+    el.getBoundingClientRect = () => box;
+    document.body.appendChild(el);
+    return el;
+  };
+
+  it('brings the alignment lines back', () => {
+    // Measuring with guides off hides the four lines so the badges can be
+    // shown alone. Nothing else put them back until the next hover, so a
+    // toggle off-and-on left the guides switched on and invisible.
+    const guides = createGuideLayer();
+    document.body.innerHTML = '';
+    document.body.append(guides.element);
+
+    const a = mk({ top: 0, bottom: 50, left: 0, right: 100, width: 100, height: 50 });
+    const b = mk({ top: 200, bottom: 250, left: 0, right: 100, width: 100, height: 50 });
+
+    guides.setEnabled(false);
+    guides.measure(a, b);
+    guides.setEnabled(true);
+
+    const lines = guides.element.querySelectorAll('.__iet-guide-h, .__iet-guide-v');
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) expect(line.hidden).toBe(false);
   });
 });

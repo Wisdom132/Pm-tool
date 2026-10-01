@@ -102,6 +102,11 @@ const SHAPES = {
   ],
 
   close: [["path", { d: "M18 6L6 18M6 6l12 12" }]],
+  // A ruler on the diagonal, with three tick marks.
+  measure: [
+    ["path", { d: "M2 15.5L15.5 2l6.5 6.5L8.5 22z" }],
+    ["path", { d: "M7 10.5l2 2M10.5 7l2 2M14 3.5l2 2" }],
+  ],
   a11y: [
     ["circle", { cx: "12", cy: "5", r: "2" }],
     ["path", { d: "M4 9h16M12 9v6M12 15l-4 5M12 15l4 5" }],

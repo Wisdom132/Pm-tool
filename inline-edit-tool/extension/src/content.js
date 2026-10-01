@@ -115,6 +115,7 @@ const INTERACTIVE_TOOLS = new Set([
   TOOL.PROPERTIES,
   TOOL.DESIGN,
   TOOL.STRUCTURE,
+  TOOL.MEASURE,
   TOOL.COMMENT,
 ]);
 
@@ -147,6 +148,11 @@ const WHOLE_PAGE_TOOLS = new Set([
   // container is exactly what holds padding.
   TOOL.DESIGN,
   TOOL.STRUCTURE,
+  // Measuring reports geometry, and an image or an icon has geometry like
+  // anything else. Restricting it to editable elements would make the most
+  // common question — "why is this logo not aligned with that heading" —
+  // the one case the tool could not answer.
+  TOOL.MEASURE,
 ]);
 
 // ============================================================
@@ -239,17 +245,32 @@ async function restorePreferences() {
   guides.setEnabled(guidesOn);
   // Reflect the stored state without announcing it — nothing just changed.
   rail.setToggle("guides", guidesOn, { silent: true });
+  syncGuidesAvailability();
 }
 
 function setToggleOption(id, on) {
   if (id === "guides") {
     guides.setEnabled(on);
     chrome.storage.sync.set({ [GUIDES_STORAGE_KEY]: on });
+
+    // Guides draw on the element the active tool is pointed at, so with no
+    // tool there is nothing to hover and the toggle would sit lit and inert.
+    // Picking the read-only default is what the person asked for implicitly:
+    // wanting to see guides means wanting to hover things.
+    const adopted = on && !INTERACTIVE_TOOLS.has(activeTool);
+    if (adopted) rail.selectTool(TOOL.INSPECT);
+
     if (on && hoveredEl?.isConnected) {
       guides.show(hoveredEl, session.has(editKey(hoveredEl)) ? "edited" : "hover");
     }
+
+    syncGuidesAvailability();
     toast.show(
-      on ? "Alignment guides on \u2014 hover any element" : "Alignment guides off",
+      on
+        ? adopted
+          ? "Alignment guides on \u2014 Inspect selected so you can hover"
+          : "Alignment guides on \u2014 hover any element"
+        : "Alignment guides off",
       { tone: "info", duration: 1800 }
     );
     return;
@@ -411,6 +432,24 @@ function selectTool(toolId) {
     toolCard.hide();
     if (wasInteractive) teardownInteraction();
   }
+
+  syncGuidesAvailability();
+}
+
+/**
+ * Dim the guides toggle when there is no tool for it to decorate.
+ *
+ * The toggle is a stored preference, so it stays on — switching it off here
+ * would quietly lose the setting. What it must not do is claim to be working
+ * when no tool is active and nothing is tracking the pointer, which read as
+ * "I turned guides on and they stopped working".
+ */
+function syncGuidesAvailability() {
+  rail.setInert(
+    "guides",
+    !INTERACTIVE_TOOLS.has(activeTool),
+    "Pick a tool to hover with"
+  );
 }
 
 function runAction(id) {
@@ -631,8 +670,9 @@ function onDocumentHover(e) {
   labels.show(el, { state });
   guides.show(el, state);
 
-  // Pinned by Inspect, hovering something else: read out the distance.
-  if (activeTool === TOOL.INSPECT && pinnedEl?.isConnected && el !== pinnedEl) {
+  // Pinned by Inspect or Measure, hovering something else: read out the
+  // distance between the two.
+  if (MEASURING_TOOLS.has(activeTool) && pinnedEl?.isConnected && el !== pinnedEl) {
     guides.measure(pinnedEl, el);
   } else {
     guides.clearMeasure();
@@ -784,6 +824,13 @@ function onDocumentClick(e) {
 /** Tools where acting on several elements at once is meaningful. */
 const MULTI_SELECT_TOOLS = new Set([TOOL.DESIGN, TOOL.INSPECT]);
 
+/**
+ * Tools where a pinned element plus a hovered one reads out a distance.
+ *
+ * Inspect does it as a side benefit of pinning; Measure exists for it.
+ */
+const MEASURING_TOOLS = new Set([TOOL.INSPECT, TOOL.MEASURE]);
+
 /** Show which elements are in the selection, beyond the one being hovered. */
 function paintSelection() {
   for (const el of document.querySelectorAll(`.${CLS.selected}`)) {
@@ -846,6 +893,24 @@ function activateOn(el, event) {
     labels.show(el, { state: "selected" });
     guides.show(el, "selected");
     hideCrumbs();
+    return;
+  }
+
+  if (activeTool === TOOL.MEASURE) {
+    // Same pin as Inspect, as the only end of a measurement that holds
+    // still. Clicking the anchor again releases it, so a wrong first pick
+    // is undone by repeating the gesture that made it.
+    if (pinnedEl === el) {
+      pinnedEl = null;
+      guides.clearMeasure();
+      toast.show("Pick an element to measure from", { tone: "info" });
+    } else {
+      pinnedEl = el;
+      guides.clearMeasure();
+      labels.show(el, { state: "selected" });
+      guides.show(el, "selected");
+      toast.show("Now point at something else", { tone: "info" });
+    }
     return;
   }
 
@@ -1660,6 +1725,7 @@ function onKeydown(e) {
     p: TOOL.PROPERTIES,
     d: TOOL.DESIGN,
     r: TOOL.STRUCTURE,
+    m: TOOL.MEASURE,
     c: TOOL.COMMENT,
   };
   const tool = toolFor[e.key?.toLowerCase?.()];

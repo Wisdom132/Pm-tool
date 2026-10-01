@@ -9,6 +9,7 @@ import {
   PROPERTIES,
   SPACING_SCALE,
   findUtilityClass,
+  isFlexContainer,
   stepClass,
   usesUtilityClasses,
 } from '../inline-edit-tool/extension/src/ui/class-scale.js';
@@ -287,5 +288,121 @@ describe('nearestSpacing — what makes a drag committable', () => {
     for (const px of [0, 1, 7, 13, 99, 500, -3, -250]) {
       expect(SPACING_SCALE, `${px}px`).toContain(nearestSpacing(px).value);
     }
+  });
+});
+
+// ============================================================
+//  Flex alignment
+//
+//  VisBug's flex tool writes inline styles and force-sets
+//  `display: flex` on whatever is selected. Both are wrong for
+//  output that becomes a pull request: the style evaporates, and
+//  the forced display arrives as a change nobody made on
+//  purpose. Here each axis is a cycle of the classes the
+//  codebase already uses.
+// ============================================================
+describe('flex alignment modes', () => {
+  it('cycles justify in the order the content moves', () => {
+    // Packed left, centred, packed right, then the three that spread it —
+    // spatial order, not the order the CSS spec lists them in.
+    expect(MODES.justifyContent.slice(0, 3)).toEqual([
+      'justify-start',
+      'justify-center',
+      'justify-end',
+    ]);
+  });
+
+  it('steps justify forward and back', () => {
+    const first = stepMode(['justify-start'], 'justifyContent', 1);
+    expect(first.to).toBe('justify-center');
+    expect(first.classes).toEqual(['justify-center']);
+
+    expect(stepMode(['justify-center'], 'justifyContent', -1).to).toBe('justify-start');
+  });
+
+  it('wraps rather than stopping at the end', () => {
+    // A cycle has no ends worth refusing at: stopping on `justify-evenly`
+    // would mean pressing the other arrow five times to get back.
+    const last = MODES.justifyContent[MODES.justifyContent.length - 1];
+    expect(stepMode([last], 'justifyContent', 1).to).toBe('justify-start');
+  });
+
+  it('replaces the mode it finds rather than adding a second', () => {
+    const out = stepMode(['p-4', 'justify-start', 'text-lg'], 'justifyContent', 1);
+    expect(out.classes).toEqual(['p-4', 'text-lg', 'justify-center']);
+  });
+
+  it('starts from the first mode when none is set', () => {
+    expect(stepMode(['p-4'], 'justifyContent', 1).to).toBe('justify-center');
+    expect(stepMode(['p-4'], 'justifyContent', 1).from).toBeNull();
+  });
+
+  it('keeps the flex families independent', () => {
+    // `flex-row` and `flex-wrap` both begin `flex-`, and stepping direction
+    // must not strip the wrap setting — they are different CSS properties
+    // that happen to share a prefix.
+    const out = stepMode(['flex-row', 'flex-wrap'], 'flexDirection', 1);
+    expect(out.to).toBe('flex-col');
+    expect(out.classes).toContain('flex-wrap');
+    expect(out.classes).not.toContain('flex-row');
+  });
+
+  it('does not mistake a direction class for a display class', () => {
+    // `flex` is the display class; `flex-col` is not one, and reading it as
+    // such would have the Display row claim a value the element lacks.
+    expect(findMode(['flex-col'], 'display')).toBeNull();
+    expect(findMode(['flex', 'flex-col'], 'display')).toMatchObject({ value: 'flex' });
+  });
+
+  it('matches a reversed direction exactly, not by prefix', () => {
+    expect(findMode(['flex-row-reverse'], 'flexDirection')).toMatchObject({
+      value: 'flex-row-reverse',
+    });
+  });
+
+  it('leaves `hidden` out of the display cycle', () => {
+    // Cycling onto `hidden` would make the element the panel is pointed at
+    // vanish mid-edit. It is a legitimate class and a terrible thing to land
+    // on by holding an arrow key.
+    expect(MODES.display).not.toContain('hidden');
+    expect(MODES.display).toContain('flex');
+  });
+
+  it('ignores responsive and state variants, as the scales do', () => {
+    // Stepping `md:justify-start` from a desktop viewport would change a
+    // breakpoint the person cannot currently see.
+    expect(findMode(['md:justify-start'], 'justifyContent')).toBeNull();
+    expect(findMode(['hover:items-center'], 'alignItems')).toBeNull();
+  });
+});
+
+describe('isFlexContainer', () => {
+  const withDisplay = (display) => ({
+    // Only the one property is read, so a stub is honest here.
+    style: { display },
+  });
+  const win = { getComputedStyle: (el) => ({ display: el.display }) };
+
+  it('accepts flex and grid, including the inline forms', () => {
+    for (const display of ['flex', 'inline-flex', 'grid', 'inline-grid']) {
+      expect(isFlexContainer({ display }, win), display).toBe(true);
+    }
+  });
+
+  it('rejects the ordinary display values', () => {
+    for (const display of ['block', 'inline', 'inline-block', 'flow-root', 'none', 'contents']) {
+      expect(isFlexContainer({ display }, win), display).toBe(false);
+    }
+  });
+
+  it('reads the computed display, not a class', () => {
+    // An element is very often a flex container by way of the page's own
+    // stylesheet, with no utility class on it at all. Deciding from classes
+    // would dim the alignment rows while looking straight at a flex row.
+    expect(isFlexContainer({ display: 'flex' }, win)).toBe(true);
+  });
+
+  it('is safe on nothing', () => {
+    expect(isFlexContainer(null, win)).toBe(false);
   });
 });

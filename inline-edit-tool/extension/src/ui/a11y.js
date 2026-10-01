@@ -24,6 +24,7 @@ import {
   wcagVerdict,
 } from "./contrast.js";
 import { annotationFor } from "../element-selector.js";
+import { placeCard } from "./placement.js";
 
 const P = "__iet";
 
@@ -241,14 +242,6 @@ export function createA11yCard() {
   };
 
   function position(el) {
-    const rect = el.getBoundingClientRect();
-    const height = card.offsetHeight || 120;
-    const width = card.offsetWidth || 280;
-
-    const below = rect.bottom + 8;
-    card.style.top = `${
-      below + height <= window.innerHeight - 8 ? below : Math.max(8, rect.top - height - 8)
-    }px`;
-    card.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
+    placeCard(card, el, { width: 300, height: 120 });
   }
 }

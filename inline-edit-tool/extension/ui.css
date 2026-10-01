@@ -176,6 +176,20 @@
   box-shadow: 0 3px 12px rgba(6, 182, 212, 0.45);
 }
 
+/* On, but with nothing to act on — the guides toggle while no tool is
+   selected. Dimmed rather than switched off, because the toggle is a stored
+   preference and unsetting it would lose the person's choice. A lit control
+   that does nothing is what made this look broken. */
+.__iet-tool[data-inert='true'] {
+  opacity: 0.4;
+}
+
+.__iet-tool[data-inert='true'][aria-pressed='true'] {
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.45);
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--iet-muted);
+}
+
 /* A toggle is a view option, not a mode. Tinting it instead of filling it
    keeps the active *tool* the only strongly marked control, and borrows the
    guides' own colour so the button and the lines read as one thing. */
@@ -1928,6 +1942,8 @@
   position: fixed;
   z-index: 2147483645;
   width: 300px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   padding: 12px 14px;
   border-radius: 10px;
   background: var(--iet-surface-solid);
@@ -2061,6 +2077,13 @@
   position: fixed;
   z-index: 2147483645;
   width: 262px;
+  /* The panel grew past the viewport when the layout rows were added, and a
+     card taller than the screen loses its last rows off the bottom with no
+     way to reach them. Capped and scrolled instead — the title and the hint
+     stay put, only the rows move. */
+  max-height: calc(100vh - 16px);
+  display: flex;
+  flex-direction: column;
   padding: 12px;
   border-radius: 10px;
   background: var(--iet-surface-solid);
@@ -2076,7 +2099,14 @@
   margin-bottom: 8px;
 }
 
-.__iet-design-rows { display: grid; gap: 2px; }
+.__iet-design-rows {
+  display: grid;
+  gap: 2px;
+  overflow-y: auto;
+  /* Without this a grid child refuses to shrink below its content, and the
+     cap above would be silently ignored. */
+  min-height: 0;
+}
 
 .__iet-design-row {
   display: grid;
@@ -2139,3 +2169,21 @@
    because an absent row does not explain why the key did nothing. */
 .__iet-design-row[data-inert='true'] { opacity: 0.4; }
 .__iet-design-row[data-inert='true'] .__iet-design-value { color: var(--iet-dim); }
+
+/* A pair of edges that *almost* line up.
+
+   Amber, not the accent: every other badge in the measure layer reports a
+   neutral fact, and this one reports a finding. A 40px gap is a decision; 3px
+   between two edges meant to match is a mistake, and it stays invisible until
+   something names it. */
+.__iet-nearmiss {
+  position: fixed;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #b45309;
+  color: #fff;
+  font: 600 11px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}

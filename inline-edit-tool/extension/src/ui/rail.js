@@ -21,6 +21,7 @@ export const TOOL = {
   PROPERTIES: "properties",
   DESIGN: "design",
   STRUCTURE: "structure",
+  MEASURE: "measure",
   COMMENT: "comment",
 };
 
@@ -50,6 +51,14 @@ const TOOLS = [
     icon: "copy",
     label: "Rearrange",
     hint: "Move, duplicate or delete",
+  },
+  {
+    id: TOOL.MEASURE,
+    icon: "measure",
+    label: "Measure",
+    // The only tool that changes nothing, so the hint says so — otherwise
+    // people reasonably assume clicking is about to edit something.
+    hint: "Click one element, then point at another",
   },
   {
     id: TOOL.COMMENT,
@@ -104,6 +113,8 @@ export function createRail({ onTool, onAction, onToggle }) {
   rail.hidden = true;
 
   const buttons = new Map();
+  /** Each button's hint line, so an unavailable control can say why. */
+  const subs = new Map();
   let activeTool = null;
 
   function mkButton({ id, icon: iconName, label, hint, shortcut, counted, isTool, isToggle }) {
@@ -127,12 +138,12 @@ export function createRail({ onTool, onAction, onToggle }) {
     tipTitle.textContent = label;
     tip.appendChild(tipTitle);
 
-    if (hint || shortcut) {
-      const sub = document.createElement("span");
-      sub.className = `${P}-tip-sub`;
-      sub.textContent = shortcut || hint;
-      tip.appendChild(sub);
-    }
+    const sub = document.createElement("span");
+    sub.className = `${P}-tip-sub`;
+    sub.textContent = shortcut || hint || "";
+    sub.hidden = !(hint || shortcut);
+    tip.appendChild(sub);
+    subs.set(id, { node: sub, original: sub.textContent });
     btn.appendChild(tip);
 
     if (counted) {
@@ -210,6 +221,27 @@ export function createRail({ onTool, onAction, onToggle }) {
     if (!silent) onToggle?.(id, Boolean(on));
   }
 
+  /**
+   * Mark a control as unavailable without unsetting it.
+   *
+   * A view option is a stored preference, so switching it off because it
+   * cannot act right now would lose the person's setting. Dimming says "on,
+   * but not doing anything yet" — which is the true state, and the one a lit
+   * button with no effect fails to communicate.
+   */
+  function setInert(id, inert, reason) {
+    const btn = buttons.get(id);
+    if (!btn) return;
+
+    if (inert) btn.dataset.inert = "true";
+    else delete btn.dataset.inert;
+
+    const sub = subs.get(id);
+    if (!sub) return;
+    sub.node.textContent = inert && reason ? reason : sub.original;
+    sub.node.hidden = !sub.node.textContent;
+  }
+
   function selectTool(id) {
     activeTool = id;
     for (const tool of TOOLS) {
@@ -237,6 +269,8 @@ export function createRail({ onTool, onAction, onToggle }) {
     get activeTool() {
       return activeTool;
     },
+
+    setInert,
 
     selectTool,
     setToggle,

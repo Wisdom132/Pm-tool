@@ -72,7 +72,56 @@ export const Z_SCALE = ["0", "10", "20", "30", "40", "50"];
  */
 export const MODES = {
   position: ["static", "relative", "absolute", "fixed", "sticky"],
+
+  // Enough display values to turn something into a flex or grid container,
+  // which is what the alignment rows below need. Deliberately *not* the whole
+  // list: `hidden` belongs to a cycle nobody wants to land on by accident,
+  // since the element the panel is pointed at would vanish mid-edit.
+  display: ["block", "inline-block", "flex", "inline-flex", "grid"],
+
+  // Flex alignment, from VisBug's flex tool. There it is four hotkey pairs
+  // writing inline styles; here each axis is a cycle of the classes a
+  // utility codebase already uses, so the change arrives as a diff.
+  //
+  // The values are the full class names rather than CSS keywords, which is
+  // what lets `findMode` and `stepMode` handle these unchanged — a mode is
+  // identified by the class being present, and `justify-center` is as bare a
+  // class name as `relative` is.
+  flexDirection: ["flex-row", "flex-col", "flex-row-reverse", "flex-col-reverse"],
+
+  // Ordered the way the content moves, not the way the CSS spec lists them:
+  // packed left, centred, packed right, then the three that spread it out.
+  justifyContent: [
+    "justify-start",
+    "justify-center",
+    "justify-end",
+    "justify-between",
+    "justify-around",
+    "justify-evenly",
+  ],
+  alignItems: ["items-start", "items-center", "items-end", "items-stretch", "items-baseline"],
+  flexWrap: ["flex-nowrap", "flex-wrap", "flex-wrap-reverse"],
 };
+
+/**
+ * Is this element laid out by flexbox or grid?
+ *
+ * Read from the computed display rather than from a class, because an element
+ * is very often a flex container by way of the page's own stylesheet with no
+ * utility class on it at all. Deciding from classes would tell somebody their
+ * `justify-*` row was unavailable while looking straight at a flex row.
+ *
+ * VisBug answers this question by not asking it: its flex tool runs
+ * `el.style.display = 'flex'` on whatever is selected. That is right for a
+ * scratchpad and wrong here — it would put a `display: flex` nobody typed
+ * into the pull request, as a side effect of pressing an arrow key.
+ */
+export function isFlexContainer(el, win = window) {
+  if (!el) return false;
+  const display = win.getComputedStyle(el).display || "";
+  // `inline-flex` and `inline-grid` count; `flow-root` and `block` do not.
+  return /\b(flex|grid)\b/.test(display);
+}
 
 /**
  * The properties a design tool can step, and how each maps to a class.
